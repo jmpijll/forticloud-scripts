@@ -57,6 +57,7 @@ API_Credential*.txt
 apireference/
 forticloudexport/
 COMPLETION_SUMMARY.md
+SECURITY_AUDIT.md
 
 # Testing
 .pytest_cache/
