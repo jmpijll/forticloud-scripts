@@ -1,333 +1,218 @@
-# FortiCloud API Scripts
+# FortiCloud API Asset Management
 
-A comprehensive Python toolkit for interacting with the FortiCloud API to retrieve and export device asset information across multiple accounts.
+Automated scripts to retrieve and export FortiGate, FortiSwitch, and FortiAP device information from FortiCloud using the Asset Management API.
 
-## 🎯 Overview
+## 🎯 Features
 
-This project provides **idempotent, self-contained scripts** that automatically discover accounts and export FortiCloud device data to CSV files. Perfect for MSPs managing multiple customer organizations.
-
-### Key Features
-
-- ✅ **Automatic Account Discovery** - No manual configuration needed
-- ✅ **Multi-Device Support** - FortiGate, FortiWiFi, FortiSwitch, FortiAP
-- ✅ **OAuth 2.0 Authentication** - Secure API access
-- ✅ **Complete Coverage** - All contracts including expired ones
-- ✅ **Idempotent Scripts** - Run anytime, consistent results
-- ✅ **CSV Export** - Easy data analysis and reporting
-- ✅ **Multi-Account Support** - Query across all accessible accounts
-- ✅ **Cross-Platform** - Works on Windows, macOS, Linux
-- ✅ **Production Tested** - Validated with 698+ devices across 17 accounts
-
----
+- **Automatic Account Discovery** - No manual account ID configuration needed
+- **Multi-Device Support** - Separate scripts for FortiGate, FortiSwitch, and FortiAP
+- **Complete Data** - Includes active AND decommissioned devices
+- **Rich Metadata** - Account, OU, company information in every export
+- **Contract History** - All entitlements including expired support contracts
+- **CSV Export** - Easy-to-use format for Excel, Power BI, or other tools
 
 ## 📋 Prerequisites
 
-- **Python 3.8+** (Python 3.12 recommended)
-- **Git** (for version control)
-- **FortiCloud IAM API User** with Organization scope
-
----
+- **Python 3.12+**
+- **FortiCloud API User** with Organization scope
+  - Access to Organization API
+  - Access to IAM API  
+  - Access to Asset Management API
 
 ## 🚀 Quick Start
 
-### 1. Setup Environment
+### 1. Install Python Dependencies
 
 ```powershell
-# Create virtual environment
+# Create and activate virtual environment
 python -m venv venv
+.\venv\Scripts\Activate.ps1
 
-# Activate it
-.\venv\Scripts\Activate.ps1  # Windows PowerShell
-# OR
-source venv/bin/activate      # Linux/macOS
-
-# Install dependencies
+# Install required packages
 pip install -r requirements.txt
 ```
 
-### 2. Configure Credentials
+### 2. Configure API Credentials
 
-Copy `.env.example` to `.env` and add your FortiCloud API credentials:
+Copy `env.template` to `.env` and add your credentials:
 
 ```bash
-FORTICLOUD_CLIENT_ID=YOUR_API_ID
-FORTICLOUD_CLIENT_SECRET=YOUR_API_PASSWORD
-FORTICLOUD_AUTH_URL=https://customerapiauth.fortinet.com/api/v1/oauth/token/
+FORTICLOUD_CLIENT_ID=your_api_user_id
+FORTICLOUD_CLIENT_SECRET=your_api_password
+FORTICLOUD_AUTH_URL=https://customerapiauth.fortinet.com/api/v1/oauth/token
 FORTICLOUD_API_BASE_URL=https://support.fortinet.com/ES/api/registration/v3
+DEBUG=false
 ```
 
-### 3. Run Export Scripts
+Get your API credentials from:  
+`FortiCloud Portal` → `IAM` → `API Users` → `Create API User`
 
-```bash
-# FortiGate and FortiWiFi devices
-python scripts/get_fortigate_devices.py
+**Important:** API user must have **Organization scope** type.
 
-# FortiSwitch devices
+### 3. Run Scripts
+
+```powershell
+# Activate virtual environment (if not already active)
+.\venv\Scripts\Activate.ps1
+
+# Export FortiSwitch devices
 python scripts/get_fortiswitch_devices.py
 
-# FortiAP devices
+# Export FortiAP devices
 python scripts/get_fortiap_devices.py
-```
 
-**Output:** Timestamped CSV files with device and contract information.
-
----
-
-## 📂 Project Structure
-
-```
-forticloud-assets/
-├── .env                                # API credentials (not in git)
-├── .env.example                        # Template for credentials
-├── .gitignore                          # Git ignore rules
-├── README.md                           # This file
-├── SETUP_GUIDE.md                      # Detailed setup instructions
-├── QUICK_START.md                      # Quick reference
-├── PROJECT_SUMMARY.md                  # Complete project overview
-├── requirements.txt                    # Python dependencies
-│
-├── docs/
-│   ├── FortiCloud_API_Research.md      # Comprehensive API documentation
-│   └── API_Authentication_Guide.md     # OAuth authentication guide
-│
-├── apireference/                       # FortiCloud API specifications (JSON)
-│   ├── Asset Management V3 Product.json
-│   ├── Asset Management V3 Contract.json
-│   ├── IAM V1 Accounts.json
-│   └── Organization V1 Units.json
-│
-└── scripts/
-    ├── get_fortigate_devices.py        # FortiGate/FortiWiFi export (idempotent)
-    ├── get_fortiswitch_devices.py      # FortiSwitch export (idempotent)
-    ├── get_fortiap_devices.py          # FortiAP export (idempotent)
-    ├── get_all_account_ids.py          # Manual account discovery tool
-    └── test_connection.py              # Connection test script
-```
-
----
-
-## 📜 Available Scripts
-
-### Device Export Scripts (Idempotent)
-
-All export scripts automatically:
-1. Discover all accessible accounts
-2. Authenticate with FortiCloud API
-3. Retrieve devices from all accounts
-4. Filter by device type
-5. Export to timestamped CSV
-
-#### FortiGate/FortiWiFi Export
-```bash
+# Export FortiGate/FortiWiFi devices
 python scripts/get_fortigate_devices.py
 ```
-**Output:** `fortigate_devices_YYYYMMDD_HHMMSS.csv`
 
-#### FortiSwitch Export
-```bash
-python scripts/get_fortiswitch_devices.py
-```
-**Output:** `fortiswitch_devices_YYYYMMDD_HHMMSS.csv`
-
-#### FortiAP Export
-```bash
-python scripts/get_fortiap_devices.py
-```
-**Output:** `fortiap_devices_YYYYMMDD_HHMMSS.csv`
-
-### Utility Scripts
-
-#### Test Connection
-```bash
-python scripts/test_connection.py
-```
-Validates API credentials and connectivity.
-
-#### Manual Account Discovery
-```bash
-python scripts/get_all_account_ids.py
-```
-Lists all accessible account IDs (useful for troubleshooting).
-
----
+Each script will:
+1. Auto-discover all accessible accounts and OUs
+2. Retrieve all devices from all accounts
+3. Filter by device type
+4. Export to timestamped CSV file
 
 ## 📊 CSV Output Format
 
-All export scripts generate CSV files with the following columns:
+All CSVs include the following columns:
 
 | Column | Description |
 |--------|-------------|
-| **Serial Number** | Device unique identifier |
-| **Product Model** | Device model (e.g., FortiGate-60F) |
-| **Description** | User-defined device name |
+| **Serial Number** | Device serial number |
+| **Product Model** | Device model (e.g., FortiSwitch 124F POE) |
+| **Description** | User-defined description |
+| **Account ID** | FortiCloud account ID |
+| **Company** | Company name |
+| **Organizational Unit** | OU/sub-account name |
 | **Registration Date** | When device was registered |
-| **Folder Path** | Asset folder location |
-| **Support Level** | Support coverage level |
-| **Support Type** | Type of support/entitlement |
-| **Start Date** | Contract/entitlement start date |
-| **End Date** | Contract/entitlement end date |
-| **Status** | Active, Expired, or Unknown |
+| **Device Status** | Registration status (Registered, Pending, etc.) |
+| **Is Decommissioned** | Yes/No - marks retired devices |
+| **Folder Path** | Asset folder in FortiCloud |
+| **Support Level** | Support tier (e.g., Premium, Advanced HW) |
+| **Support Type** | Contract type (e.g., Hardware, Technical Support) |
+| **Start Date** | Contract start date |
+| **End Date** | Contract expiration date |
+| **Contract Status** | Active, Expired, or Unknown |
 
-**Note:** Each device generates multiple rows (one per entitlement/contract).
+**Note:** Each device may have multiple rows (one per entitlement/contract).
 
----
+## 🔍 Understanding the Data
 
-## 🔧 Configuration
+### Decommissioned Devices
 
-### Environment Variables
+Extra devices marked as "Decommissioned: Yes" are **legitimate devices** that:
+- Are no longer active in production
+- Are filtered out of FortiCloud GUI exports by default
+- Provide complete asset history and inventory tracking
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `FORTICLOUD_CLIENT_ID` | API User ID (username) | `509B0E64-6867-4FB8-...` |
-| `FORTICLOUD_CLIENT_SECRET` | API Password | `db45ce4cbfe6e623...` |
-| `FORTICLOUD_AUTH_URL` | Authentication endpoint | `https://customerapiauth.fortinet.com/api/v1/oauth/token/` |
-| `FORTICLOUD_API_BASE_URL` | Asset Management API base | `https://support.fortinet.com/ES/api/registration/v3` |
-| `DEBUG` | Enable debug logging | `true` or `false` |
+To filter them out in Excel: Apply filter on "Is Decommissioned" column → Show only "No"
 
-### Debug Mode
+### Multiple Rows Per Device
 
-Enable detailed logging for troubleshooting:
-```bash
-# In .env file
-DEBUG=true
-```
+Devices appear multiple times when they have:
+- Multiple support contracts (current + historical)
+- Multiple entitlement types (Hardware, Firmware, Technical Support)
 
----
+Use Excel pivot tables or `UNIQUE()` function to get device counts.
 
-## 🔐 Security Best Practices
-
-- ✅ Never commit `.env` files to version control
-- ✅ Store credentials securely
-- ✅ Rotate API credentials quarterly
-- ✅ Use Organization-scope API users for multi-account access
-- ✅ Monitor API usage in FortiCloud IAM portal
-- ✅ Review `.gitignore` to ensure sensitive files are excluded
-
----
-
-## 📚 Documentation
-
-### Comprehensive Guides
-- **[FortiCloud_API_Research.md](docs/FortiCloud_API_Research.md)** - Complete API documentation with production examples
-- **[API_Authentication_Guide.md](docs/API_Authentication_Guide.md)** - OAuth 2.0 authentication details
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Step-by-step setup instructions
-- **[QUICK_START.md](QUICK_START.md)** - Fast reference guide
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - Complete project overview
-
-### API Specifications
-All FortiCloud API specifications are in the `apireference/` directory in JSON format.
-
----
-
-## 🎯 How It Works
-
-### Idempotent Workflow
-
-Each script follows this self-contained workflow:
+## 📁 Project Structure
 
 ```
-1. Load credentials from .env
-2. Authenticate with Organization API → Get all OUs
-3. Authenticate with IAM API → Get accounts per OU
-4. Authenticate with Asset Management API → Get devices per account
-5. Filter devices by type (FortiGate, FortiSwitch, FortiAP)
-6. Flatten entitlements (one row per contract)
-7. Export to timestamped CSV
+forticloud-assets/
+├── .gitignore              # Git ignore rules
+├── README.md               # This file
+├── requirements.txt        # Python dependencies
+├── env.template            # Environment template
+├── docs/
+│   └── FortiCloud_API_Research.md  # API documentation
+├── scripts/
+│   ├── get_fortigate_devices.py    # FortiGate/FortiWiFi export
+│   ├── get_fortiswitch_devices.py  # FortiSwitch export
+│   ├── get_fortiap_devices.py      # FortiAP export
+│   └── test_connection.py          # Test API connectivity
+└── venv/                   # Python virtual environment
 ```
 
-### Multi-API Architecture
+## 🛠️ Test Connection
 
-FortiCloud uses three separate APIs:
-- **Organization API V1** - Organizational units
-- **IAM API V1** - Account management
-- **Asset Management API V3** - Device and contract data
+To verify your API credentials:
 
-Each requires separate authentication with service-specific `client_id` values.
+```powershell
+python scripts/test_connection.py
+```
 
----
+This will validate:
+- Python dependencies
+- Environment variables
+- API authentication
+- Account discovery
 
-## ⚠️ Troubleshooting
+## ⚙️ Technical Details
 
-### Common Issues
+### How Account Discovery Works
 
-**"Missing required environment variables"**
-- Ensure `.env` file exists and contains all required variables
-- Check variable names match exactly
+The scripts automatically:
+1. Authenticate with **Organization API** to get all OUs
+2. Authenticate with **IAM API** to query accounts per OU
+3. Build metadata mapping (Account ID → Company, OU name)
+4. Use **Asset Management API** to retrieve devices from each account
 
-**"Authentication failed"**
-- Verify API credentials are correct
-- Ensure API user has proper permissions
-- Check if credentials have expired
+**No manual configuration needed!**
 
-**"No devices found"**
-- Verify API user has Organization scope
-- Check if accounts have registered devices
-- Enable DEBUG mode to see detailed API responses
+### Serial Number Patterns
 
-**Rate limiting (429 errors)**
-- Scripts automatically handle rate limits
-- Wait 60 seconds and retry
-- Consider spacing out large queries
+**Important:** FortiSwitch devices have serial numbers starting with **both "F" and "S"**:
+- `F` prefix: FS1E48T... (FortiSwitch 1024E, 1048E)
+- `S` prefix: S108EN..., S124FPTF... (all other models)
 
----
+The scripts handle this automatically by querying both patterns and deduplicating.
 
-## 🚀 Future Enhancements
+### API Rate Limiting
 
-Potential additions:
-- Scheduled exports (via Task Scheduler/cron)
-- Additional device types (FortiAnalyzer, FortiManager)
-- Contract expiration alerting
-- Web dashboard for data visualization
-- Historical tracking database
-- Email report generation
+- Sequential account queries (no parallelization)
+- ~50-75 seconds for 17 accounts with 1000+ devices
+- No rate limit issues observed
 
----
+## 📝 Documentation
 
-## 🤝 Contributing
+- **`docs/FortiCloud_API_Research.md`** - Complete API reference with endpoints, authentication, patterns, and best practices
 
-When adding new scripts or features:
-1. Follow existing code structure and patterns
-2. Update this README with documentation
-3. Add dependencies to `requirements.txt`
-4. Document API endpoints in `docs/FortiCloud_API_Research.md`
-5. Test with multiple accounts
-6. Handle errors gracefully
+## 🐛 Troubleshooting
 
----
+### "Missing required environment variables"
+→ Ensure `.env` file exists and contains all required variables
 
-## 📊 Production Stats
+### "Authentication failed: invalid_client"
+→ Verify API User ID and Password are correct
 
-**Tested Environment:**
-- 17 accounts across 16 organizational units
-- 698 total Fortinet devices
-- 133 FortiGate/FortiWiFi devices
-- 20 FortiSwitch devices
-- 520 FortiAP devices
-- 2,961 total entitlement records
+### "Request should include a positive number for accountId"
+→ API user must have **Organization scope** type (not Account scope)
 
-**Performance:**
-- Account discovery: ~10 seconds
-- Device retrieval: ~20-30 seconds
-- Total runtime: ~40 seconds
+### No devices found
+→ Verify API user has access to Asset Management API
 
----
+### Python/pip not found
+→ Install Python 3.12+ and ensure it's in your PATH
 
-## 📝 License
+## 🔒 Security
 
-Internal use only.
+- **Never commit `.env` file** (already in `.gitignore`)
+- API credentials provide read-only access to asset information
+- Rotate API credentials quarterly
+- Store CSV exports securely (contain asset inventory)
 
----
+## 📜 License
 
-## 📞 Support
+This project is provided as-is for FortiCloud API interaction.
 
-For issues or questions:
-1. Check the documentation in `docs/`
-2. Enable DEBUG mode for detailed logs
-3. Review `PROJECT_SUMMARY.md` for complete overview
-4. Consult FortiCloud API specifications in `apireference/`
+## 🤝 Support
+
+For FortiCloud API issues:  
+→ https://support.fortinet.com/
+
+For script issues:  
+→ Review `docs/FortiCloud_API_Research.md` for API details
 
 ---
 
-**Version:** 2.0 - Idempotent  
 **Last Updated:** September 30, 2025  
-**Status:** ✅ Production Ready
+**API Version:** Asset Management V3, Organization V1, IAM V1

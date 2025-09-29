@@ -1,58 +1,61 @@
 # FortiCloud API Research & Documentation
 
 **Last Updated:** September 30, 2025  
-**Version:** 2.0 - Production Validated  
-**Status:** ✅ Tested with 698 devices across 17 accounts
+**API Versions:** Asset Management V3, Organization V1, IAM V1
 
 ---
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Authentication](#authentication)
-3. [API Architecture](#api-architecture)
-4. [Account Discovery Workflow](#account-discovery-workflow)
-5. [Device Retrieval](#device-retrieval)
+3. [Account Discovery](#account-discovery)
+4. [Device Retrieval](#device-retrieval)
+5. [Serial Number Patterns](#serial-number-patterns)
 6. [Data Models](#data-models)
 7. [Error Handling](#error-handling)
-8. [Rate Limits](#rate-limits)
-9. [Best Practices](#best-practices)
-10. [Production Learnings](#production-learnings)
-11. [References](#references)
+8. [Best Practices](#best-practices)
+9. [Production Statistics](#production-statistics)
 
 ---
 
 ## Overview
 
-FortiCloud provides a RESTful API system for programmatic access to device information, contracts, and asset management. The API uses OAuth 2.0 password grant authentication and returns JSON data.
+### API Architecture
 
-### Verified Base URLs
-```
-Authentication:      https://customerapiauth.fortinet.com/api/v1/oauth/token/
-Asset Management V3: https://support.fortinet.com/ES/api/registration/v3/
-Organization V1:     https://support.fortinet.com/ES/api/organization/v1/
-IAM V1:              https://support.fortinet.com/ES/api/iam/v1/
-```
+FortiCloud uses a **multi-API system** with separate services:
 
-### Supported Device Types
-- FortiGate (FGT*, FG*)
-- FortiWiFi (FW*, FWF*)
-- FortiSwitch (FS*)
-- FortiAP (FAP*, F*AP*)
-- FortiAnalyzer, FortiManager, and more
+| API | Base URL | Purpose | Client ID |
+|-----|----------|---------|-----------|
+| **Organization V1** | `https://support.fortinet.com/ES/api/organization/v1/` | List OUs and organizational structure | `organization` |
+| **IAM V1** | `https://support.fortinet.com/ES/api/iam/v1/` | List accounts within OUs | `iam` |
+| **Asset Management V3** | `https://support.fortinet.com/ES/api/registration/v3/` | Retrieve device/asset information | `assetmanagement` |
+
+**Key Point:** Each API requires authentication with a **service-specific `client_id`**.
+
+### Authentication Server
+
+All APIs authenticate through:
+```
+https://customerapiauth.fortinet.com/api/v1/oauth/token
+```
 
 ---
 
 ## Authentication
 
-### OAuth 2.0 Password Grant Flow
+### OAuth 2.0 Password Grant
 
-**Endpoint:** `POST https://customerapiauth.fortinet.com/api/v1/oauth/token/`
+FortiCloud uses **OAuth 2.0 Password Grant** (not client credentials).
 
-**Request Format:**
+**Request:**
 ```json
+POST https://customerapiauth.fortinet.com/api/v1/oauth/token
+Content-Type: application/json
+
 {
-  "username": "509B0E64-6867-4FB8-B5D7-F4CF0FA3475E",
-  "password": "your_api_password",
+  "username": "apiuser-XXXXXXXXXX",
+  "password": "your_password",
   "client_id": "assetmanagement",
   "grant_type": "password"
 }
@@ -61,82 +64,46 @@ IAM V1:              https://support.fortinet.com/ES/api/iam/v1/
 **Response:**
 ```json
 {
-  "access_token": "4PliBCMrL01dcdBlqxQKElkCjJizsy",
-  "expires_in": 3660,
+  "access_token": "eyJhbG...",
   "token_type": "Bearer",
-  "scope": "read write",
-  "refresh_token": "868cmnR61l84PNOayPuSI3HrDq8GGP",
-  "message": "successfully authenticated",
-  "status": "success"
+  "expires_in": 3660
 }
 ```
 
 ### Service-Specific Client IDs
 
-| client_id | API Access | Use Case |
-|-----------|------------|----------|
-| `assetmanagement` | Asset Management V3 | Retrieve devices, contracts, licenses |
-| `organization` | Organization V1 | List OUs, manage structure |
-| `iam` | IAM V1 | List/manage accounts and users |
-| `fortigatecloud` | FortiGate Cloud | FortiGate-specific features |
-| `FortiManager` | FortiManager Cloud | FortiManager management |
-| `flexvm` | FortiFlex | License/VM management |
+| Service | client_id Value |
+|---------|----------------|
+| Organization API | `"organization"` |
+| IAM API | `"iam"` |
+| Asset Management API | `"assetmanagement"` |
 
-**Critical:** Must use correct `client_id` for the API you're calling!
+**Important:** Use the correct `client_id` for each API service!
 
-### Token Details
-- **Format:** Opaque string (not JWT)
-- **Expiration:** 3660 seconds (~61 minutes)
-- **Scope:** `read write`
-- **Usage:** `Authorization: Bearer <token>`
+### Token Usage
 
----
-
-## API Architecture
-
-### Multi-API System
-
-FortiCloud uses **three independent APIs** that require separate authentication:
-
-```
-1. Authenticate with "organization" → Get OUs
-2. Authenticate with "iam" → Get Accounts per OU
-3. Authenticate with "assetmanagement" → Get Devices per Account
-```
-
-### API User Scope Types
-
-**Local Scope:**
-- Access to single account
-- `accountId` parameter optional in requests
-- Suitable for single-organization users
-
-**Organization Scope (Our Implementation):**
-- Access to multiple accounts across OUs
-- `accountId` parameter **MANDATORY** in most requests
-- Suitable for MSP/multi-org environments
-- Must query each account separately
-
----
-
-## Account Discovery Workflow
-
-### Step 1: Get Organizational Units
-
-**Authenticate:**
-```json
-{
-  "username": "API_ID",
-  "password": "API_PASSWORD",
-  "client_id": "organization",
-  "grant_type": "password"
+```python
+headers = {
+    'Authorization': f'Bearer {access_token}',
+    'Content-Type': 'application/json'
 }
 ```
 
-**Endpoint:** `POST /ES/api/organization/v1/units/list`
+Tokens expire after **~61 minutes**. Reuse tokens across requests to the same service.
 
-**Request Body:**
-```json
+---
+
+## Account Discovery
+
+### Step 1: Get Organizational Units
+
+**Authenticate with `client_id: "organization"`**
+
+```http
+POST /ES/api/organization/v1/units/list
+Authorization: Bearer {org_token}
+Content-Type: application/json
+
 {}
 ```
 
@@ -147,40 +114,34 @@ FortiCloud uses **three independent APIs** that require separate authentication:
   "message": "Request processed successfully",
   "organizationUnits": {
     "orgId": 1874108,
+    "name": "Main Organization",
     "orgUnits": [
       {
         "id": 1874108,
-        "name": "Main Organization",
-        "desc": "Organization description",
-        "parentId": null
+        "name": "Flowerbed Engineering B.V.",
+        "parentID": 0,
+        "desc": ""
       },
       {
-        "id": 1914507,
-        "name": "Customer OU",
-        "desc": "Customer organizational unit",
-        "parentId": null
+        "id": 1935020,
+        "name": "Loods 5",
+        "parentID": 1874108,
+        "desc": ""
       }
     ]
   }
 }
 ```
 
-### Step 2: Get Accounts per OU
+### Step 2: Get Accounts Per OU
 
-**Authenticate:**
-```json
-{
-  "username": "API_ID",
-  "password": "API_PASSWORD",
-  "client_id": "iam",
-  "grant_type": "password"
-}
-```
+**Authenticate with `client_id: "iam"`**
 
-**Endpoint:** `POST /ES/api/iam/v1/accounts/list`
+```http
+POST /ES/api/iam/v1/accounts/list
+Authorization: Bearer {iam_token}
+Content-Type: application/json
 
-**Request Body (REQUIRED):**
-```json
 {
   "parentId": 1874108
 }
@@ -195,17 +156,20 @@ FortiCloud uses **three independent APIs** that require separate authentication:
     {
       "id": 883938,
       "parentId": 1874108,
-      "email": "account@company.com",
-      "firstName": "Master",
-      "lastName": "User",
-      "company": "Company Name",
-      "countryId": 124
+      "company": "Flowerbed Engineering",
+      "email": "fbe.forticld@flowerbed.nl",
+      "firstName": "API",
+      "lastName": "User"
     }
   ]
 }
 ```
 
-**Important:** Must query EACH OU separately to get all accounts
+**Process:**
+1. Query main `orgId`
+2. Query each OU in `orgUnits` list
+3. Deduplicate account IDs
+4. Build metadata map: `accountId` → `{company, ou_name}`
 
 ---
 
@@ -213,216 +177,260 @@ FortiCloud uses **three independent APIs** that require separate authentication:
 
 ### Get Devices from Account
 
-**Authenticate:**
-```json
-{
-  "username": "API_ID",
-  "password": "API_PASSWORD",
-  "client_id": "assetmanagement",
-  "grant_type": "password"
-}
-```
+**Authenticate with `client_id: "assetmanagement"`**
 
-**Endpoint:** `POST /ES/api/registration/v3/products/list`
+```http
+POST /ES/api/registration/v3/products/list
+Authorization: Bearer {asset_token}
+Content-Type: application/json
 
-**Request Body:**
-```json
 {
   "serialNumber": "F",
-  "status": "Registered",
   "accountId": 883938
 }
 ```
 
 **Field Requirements:**
-- **serialNumber** OR **expireBefore**: At least one REQUIRED
-  - Pattern "F" matches all Fortinet devices (FG*, FW*, FS*, FAP*)
-  - Empty string causes API error
-  - Can use specific patterns: "FG" for FortiGate only
-- **status**: "Registered" or "Pending" (default: Registered)
-- **accountId**: REQUIRED for Organization-scope users
-- **productModel**: Optional filter (e.g., "FortiGate-60F")
+- **serialNumber** - Required (pattern to match)
+- **accountId** - Required for Organization-scope users
+
+**Optional fields** (not used in current implementation):
+- ~~`status`~~ - Removed to include all devices (Registered + Decommissioned)
+- ~~`productModel`~~ - Filter after retrieval for flexibility
+- ~~`expireBefore`~~ - Not used
 
 **Response:**
 ```json
 {
   "status": 0,
-  "message": "",
-  "version": "3.0",
-  "build": "1.0.0",
-  "token": "...",
+  "message": "Request processed successfully",
   "assets": [
     {
       "serialNumber": "FGT60FTK12345678",
       "productModel": "FortiGate-60F",
-      "description": "Branch Office Firewall",
-      "registrationDate": "2023-05-15T10:20:30-08:00",
-      "folderId": 1551555,
-      "folderPath": "/My Assets/Production",
+      "description": "Main Firewall",
       "accountId": 883938,
       "status": "Registered",
       "isDecommissioned": false,
-      "productModelEoR": "2025-05-08T00:00:00",
-      "productModelEoS": "2026-05-08T00:00:00",
+      "registrationDate": "2023-05-15T10:20:30",
+      "folderId": 1551555,
+      "folderPath": "/My Assets/Production",
+      "productModelEoR": null,
+      "productModelEoS": null,
       "entitlements": [
         {
           "level": 6,
           "levelDesc": "Web/Online",
-          "type": 20,
-          "typeDesc": "Enterprise Technical Support",
-          "startDate": "2023-05-15T00:00:00-08:00",
-          "endDate": "2024-05-15T00:00:00-08:00"
-        },
+          "type": 2,
+          "typeDesc": "Firmware & General Updates",
+          "startDate": "2023-05-15T00:00:00",
+          "endDate": "2024-05-15T00:00:00"
+        }
+      ],
+      "contracts": [
         {
-          "level": 6,
-          "levelDesc": "Web/Online",
-          "type": 127,
-          "typeDesc": "FortiGuard IPS Service",
-          "startDate": "2023-05-15T00:00:00-08:00",
-          "endDate": "2024-05-15T00:00:00-08:00"
+          "contractNumber": "1234ABC",
+          "sku": "FC-10-F60FT-247-02-12",
+          "terms": [
+            {
+              "endDate": "2024-05-15T00:00:00",
+              "startDate": "2023-05-15T00:00:00",
+              "supportType": "Hardware"
+            }
+          ]
         }
       ]
     }
   ],
-  "pageNumber": 0,
+  "pageNumber": 1,
   "totalPages": 1
 }
 ```
 
-### Filtering by Device Type
+### Filtering Strategy
 
-**FortiGate/FortiWiFi:**
-```json
-{"serialNumber": "F", "status": "Registered", "accountId": 883938}
-```
-Then filter results where `productModel` contains "FortiGate" or "FortiWiFi"
+**Current Implementation:**
+1. Retrieve ALL devices using serial patterns
+2. Apply `productModel.startswith()` filter after retrieval
+3. Include decommissioned devices (filter in CSV if needed)
 
-**FortiSwitch:**
-```json
-{"serialNumber": "FS", "status": "Registered", "accountId": 883938}
+**Rationale:**
+- More flexible than API-side filtering
+- Ensures complete data retrieval
+- Single codebase for all device types
+
+---
+
+## Serial Number Patterns
+
+### Critical Discovery: Multi-Pattern Requirements
+
+Different Fortinet devices have different serial number prefixes:
+
+#### FortiSwitch - **REQUIRES MULTIPLE PATTERNS** ⚠️
+
+FortiSwitch devices start with **TWO** different patterns:
+
+| Pattern | Example Serials | Models |
+|---------|-----------------|--------|
+| **F** | FS1E48T422003020 | FortiSwitch 1024E, 1048E |
+| **S** | S108EN5918003626, S124FPTF24009790, S148FFTF23026095 | All other models (108E/F, 124E/F, 148F, 224E, 248E, 424E, 448E, etc.) |
+
+**Solution:**
+```python
+# Query with BOTH patterns
+for pattern in ['F', 'S']:
+    devices = api.get_devices(account_id, pattern)
+    all_devices.extend(devices)
+
+# Deduplicate by serial number
+unique_devices = deduplicate_by_serial(all_devices)
+
+# Filter by product model
+fortiswitches = [d for d in unique_devices 
+                 if d['productModel'].startswith('FortiSwitch')]
 ```
 
-**FortiAP:**
-```json
-{"serialNumber": "F", "status": "Registered", "accountId": 883938}
+**Impact:** Using only pattern `"F"` retrieves only 5% of FortiSwitches!
+
+#### FortiAP - Single Pattern
+
 ```
-Then filter results where `productModel` contains "FortiAP"
+Pattern: "F"
+Examples: FP221E5519055049, FP231GTF25002845, FP433FTF23013157
+All models: FortiAP 221E, 223E, 231F, 231G, 233G, 234G, 431F, 432G, 433F, etc.
+```
+
+#### FortiGate/FortiWiFi - Single Pattern
+
+```
+Pattern: "F"
+Examples: FGT60FTK12345678, FG100FTK19012345, FW40F3G19000123
+All models: FortiGate 30E through 600E, FortiGate VM, FortiWiFi 40F, etc.
+```
+
+### Implementation
+
+```python
+def get_devices(account_id, serial_patterns):
+    """Retrieve devices using multiple patterns if needed."""
+    all_devices = []
+    seen_serials = set()
+    
+    for pattern in serial_patterns:
+        payload = {
+            'serialNumber': pattern,
+            'accountId': account_id
+        }
+        response = api.post('/products/list', json=payload)
+        assets = response.json().get('assets', [])
+        
+        # Deduplicate
+        for asset in assets:
+            serial = asset['serialNumber']
+            if serial not in seen_serials:
+                seen_serials.add(serial)
+                all_devices.append(asset)
+    
+    return all_devices
+```
 
 ---
 
 ## Data Models
 
 ### Device/Asset Object
+
 ```python
 {
-    "serialNumber": str,           # Unique device identifier
-    "productModel": str,            # e.g., "FortiGate-60F", "FortiSwitch-248E"
-    "description": str,             # User-defined description
-    "registrationDate": str,        # ISO 8601 format with timezone
-    "folderId": int,                # Asset folder ID
-    "folderPath": str,              # Full path: "/My Assets/Production"
-    "accountId": int,               # Owner account ID
-    "status": str,                  # "Registered" or "Pending"
-    "isDecommissioned": bool,       # Decommission status
-    "productModelEoR": str,         # End of Registration date
-    "productModelEoS": str,         # End of Support date
-    "entitlements": List[Entitlement]
+    "serialNumber": str,
+    "productModel": str,
+    "description": str,
+    "accountId": int,
+    "status": str,  # "Registered", "Pending"
+    "isDecommissioned": bool,
+    "registrationDate": str,  # ISO 8601
+    "folderId": int,
+    "folderPath": str,
+    "productModelEoR": str | null,  # End of Repair
+    "productModelEoS": str | null,  # End of Support
+    "entitlements": List[Entitlement],
+    "contracts": List[Contract],
+    "assetGroups": List[str]
 }
 ```
 
 ### Entitlement Object
+
 ```python
 {
-    "level": int,                   # Support level code
-    "levelDesc": str,               # "Web/Online", "Premium", "Advanced HW"
-    "type": int,                    # Support type code
-    "typeDesc": str,                # "Enhanced Support", "IPS Service", etc.
-    "startDate": str,               # ISO 8601 with timezone
-    "endDate": str,                 # ISO 8601 with timezone
-    "units": int                    # Optional: quantity (VDOMs, CPUs, etc.)
+    "level": int,
+    "levelDesc": str,  # "Premium", "Advanced HW", "Web/Online"
+    "type": int,
+    "typeDesc": str,  # "Hardware", "Firmware & General Updates", "Technical Support"
+    "startDate": str,  # ISO 8601
+    "endDate": str     # ISO 8601
 }
 ```
 
-### Common Support Types
-| Type Code | Description |
-|-----------|-------------|
-| 20 | Enterprise Technical Support |
-| 113 | Number of CPUs (subscription models) |
-| 127 | FortiGuard IPS Service |
-| 152 | ADOMs (FortiAnalyzer) |
-| 207 | VDOMs (Virtual Domains) |
+### Contract Object
 
-### Support Levels
-| Level | Description |
-|-------|-------------|
-| 6 | Web/Online |
-| Premium | Enhanced/Premium Support |
-| Advanced HW | Advanced Hardware |
-| 8x5 | Business Hours Support |
+```python
+{
+    "contractNumber": str,
+    "sku": str,
+    "terms": List[{
+        "endDate": str,
+        "startDate": str,
+        "supportType": str
+    }]
+}
+```
 
 ---
 
 ## Error Handling
 
-### Response Status Codes
+### HTTP Status Codes
 
-**HTTP Level:**
 | Code | Meaning | Action |
 |------|---------|--------|
-| 200 | OK | Check JSON status field |
-| 400 | Bad Request | Check required parameters |
+| 200 | Success | Check `status` field in JSON |
 | 401 | Unauthorized | Re-authenticate (token expired) |
 | 403 | Forbidden | Check API user permissions |
 | 404 | Not Found | Verify endpoint URL |
 | 429 | Too Many Requests | Implement backoff (wait 60s) |
 
-**JSON Status Field:**
+### JSON Status Field
+
 | status | Meaning | Example |
 |--------|---------|---------|
 | 0 | Success | Data retrieved successfully |
 | -1 | Error | Check `message` and `error` fields |
 
-### Common Error Messages
+### Common Errors
 
-**"Both serialNumber and expireBefore cannot be empty at the same time"**
-- Cause: Empty or missing search parameters
-- Solution: Provide `serialNumber` pattern or `expireBefore` date
+**"Both serialNumber and expireBefore cannot be empty"**
+- Cause: Missing search parameters
+- Solution: Provide `serialNumber` pattern
 
 **"Request should include a positive number for accountId"**
-- Cause: Missing or invalid accountId for Org-scope user
+- Cause: Missing or invalid accountId
 - Solution: Include valid `accountId` in request body
+- **Note:** API user must have **Organization scope**
 
 **"parentId or accountId is required"**
 - Cause: Accounts list request without filter
 - Solution: Provide `parentId` when listing accounts
 
-**"Invalid incoming request"**
-- Cause: Malformed JSON or incorrect parameters
-- Solution: Verify request body structure
-
 ### Null/Empty Handling
 
-**Scenario:** Some accounts return `"assets": null`
 ```python
-assets = data.get('assets', [])
+# assets can be null
+assets = data.get('assets')
 if assets is None:
     assets = []
 ```
-
----
-
-## Rate Limits
-
-**Observed Limits:**
-- ~100 requests per minute per API user
-- Burst capacity: ~200 requests in 10 seconds
-- Rate limit response: HTTP 429
-
-**Best Practices:**
-- Wait 60 seconds on 429 response
-- Use exponential backoff
-- Cache account IDs (change rarely)
-- Batch operations where possible
 
 ---
 
@@ -430,112 +438,142 @@ if assets is None:
 
 ### 1. Token Management
 - Reuse tokens across requests (valid for 61 minutes)
-- Store token expiry time
-- Refresh proactively (e.g., at 55 minutes)
+- One token per service (organization, iam, assetmanagement)
 - Use session objects for connection pooling
 
-### 2. Multi-Account Queries
-- Cache account IDs (run discovery once)
-- Query accounts in parallel (with rate limiting)
-- Handle empty accounts gracefully
-- Log per-account results
+### 2. Account Discovery
+- Run once per execution (accounts change rarely)
+- Cache results if running multiple scripts
+- Query all OUs to ensure complete coverage
 
-### 3. Error Recovery
-- Retry on network errors (3 attempts)
-- Don't retry on 4xx errors (fix request)
-- Log all errors with context
-- Continue processing other accounts on failure
+### 3. Multi-Pattern Queries
+- **Always use ["F", "S"] for FortiSwitch**
+- Use ["F"] for FortiAP and FortiGate
+- Deduplicate by serial number
 
 ### 4. Data Processing
-- Validate data before export
-- Handle null/missing fields
-- Parse ISO 8601 dates properly
-- De-duplicate data if needed
+- Filter by `productModel` after retrieval
+- Handle null/missing fields gracefully
+- Include decommissioned devices for complete inventory
 
-### 5. Security
-- Store credentials in `.env` file
-- Never commit credentials
-- Use environment variables
-- Rotate API credentials quarterly
-- Monitor API usage
+### 5. Error Recovery
+- Retry on network errors (3 attempts with backoff)
+- Don't retry on 4xx errors (fix request instead)
+- Continue processing other accounts on failure
 
 ---
 
-## Production Learnings
+## Production Statistics
 
-### What Works
-✅ Pattern `"serialNumber": "F"` retrieves all Fortinet devices  
-✅ One token per service (reuse across multiple accounts)  
-✅ Query accounts in sequence (simpler than parallel with rate limiting)  
-✅ Null `assets` array is normal for empty accounts  
-✅ Entitlements include both active and expired coverage  
+### Real-World Data (September 2025)
 
-### What Doesn't Work
-❌ Empty `serialNumber` string  
-❌ GET requests (API requires POST)  
-❌ Missing `accountId` for Organization-scope users  
-❌ Querying all accounts without specifying parentId  
-❌ Assuming JWT token format  
+**Organization Structure:**
+- 1 main organization
+- 16 customer OUs
+- 17 total accounts
 
-### Performance Data
-- Authentication: < 1 second
-- OU Discovery: ~2 seconds (16 OUs)
-- Account Discovery: ~5-10 seconds (17 accounts)
-- Device Retrieval: ~20-30 seconds (698 devices across 17 accounts)
-- Total Runtime: ~30-40 seconds
+**Device Inventory:**
+- **FortiGate/WiFi:** 133 devices (23 models)
+- **FortiSwitch:** 359 devices (29 models)
+- **FortiAP:** 520 devices (10 models)
+- **Total:** 1012 unique devices
 
-### Real-World Statistics
-- **Organization:** 1 main org with 16 customer OUs
-- **Accounts:** 17 total accounts
-- **Devices:** 698 total Fortinet devices
-- **FortiGate/WiFi:** 133 devices
-- **Entitlements per device:** Average 8-10
+**Decommissioned Devices:**
+- FortiGate: 8 (6%)
+- FortiSwitch: 17 (5%)
+- FortiAP: 38 (7%)
+
+**Performance:**
+- Authentication: ~3 seconds (3 tokens)
+- Account Discovery: ~5-10 seconds (17 accounts, 16 OUs)
+- Device Retrieval: ~50-75 seconds (34 FortiSwitch queries: 17 accounts × 2 patterns)
+- **Total Runtime:** ~60-90 seconds for complete export
+
+**API Calls Per Export:**
+- FortiSwitch: 34 calls (17 accounts × 2 patterns)
+- FortiAP: 17 calls (17 accounts × 1 pattern)
+- FortiGate: 17 calls (17 accounts × 1 pattern)
 
 ---
 
-## Complete Example Workflow
+## Validation Results
+
+### Correlation with GUI Export
+
+Compared API retrieval against FortiCloud Portal GUI export:
+
+| Device Type | GUI Export | API Retrieval | Delta | Notes |
+|-------------|-----------|---------------|-------|-------|
+| FortiSwitch | 342 | 359 | +17 | Decommissioned devices |
+| FortiAP | 482 | 520 | +38 | Decommissioned devices |
+| FortiGate/WiFi | 125 | 133 | +8 | Decommissioned devices |
+
+**Result:** ✅ **100% match** - All GUI devices found by API, plus decommissioned devices
+
+**Conclusion:** API provides MORE complete data than GUI export.
+
+---
+
+## Quick Reference
+
+### Complete Workflow
 
 ```python
-# 1. Get Organization Token
-org_token = authenticate(username, password, "organization", auth_url)
+# 1. Authenticate with Organization API
+org_token = authenticate(username, password, "organization")
 
-# 2. Get All OUs
-response = post("/ES/api/organization/v1/units/list", token=org_token, json={})
-org_id = response['organizationUnits']['orgId']
-ou_list = response['organizationUnits']['orgUnits']
+# 2. Get all OUs
+org_data = post("/ES/api/organization/v1/units/list", token=org_token, json={})
+org_id = org_data['organizationUnits']['orgId']
+ou_list = org_data['organizationUnits']['orgUnits']
 
-# 3. Get IAM Token
-iam_token = authenticate(username, password, "iam", auth_url)
+# 3. Build OU mapping
+ou_map = {ou['id']: ou['name'] for ou in ou_list}
+ou_map[org_id] = "Main Organization"
 
-# 4. Get All Accounts
+# 4. Authenticate with IAM API
+iam_token = authenticate(username, password, "iam")
+
+# 5. Get all accounts
 all_accounts = []
-for ou in [{'id': org_id}] + ou_list:
-    response = post("/ES/api/iam/v1/accounts/list", 
-                   token=iam_token, 
-                   json={'parentId': ou['id']})
+for ou_id in [org_id] + [ou['id'] for ou in ou_list]:
+    response = post("/ES/api/iam/v1/accounts/list",
+                   token=iam_token,
+                   json={'parentId': ou_id})
     all_accounts.extend(response.get('accounts', []))
 
-# 5. Get Asset Management Token
-asset_token = authenticate(username, password, "assetmanagement", auth_url)
-
-# 6. Get Devices for Each Account
-all_devices = []
+# 6. Build account metadata
+account_metadata = {}
 for account in all_accounts:
-    response = post("/ES/api/registration/v3/products/list",
-                   token=asset_token,
-                   json={
-                       'serialNumber': 'F',
-                       'status': 'Registered',
-                       'accountId': account['id']
-                   })
-    assets = response.get('assets') or []
-    all_devices.extend(assets)
+    account_metadata[account['id']] = {
+        'company': account.get('company'),
+        'ou_name': ou_map.get(account['parentId'])
+    }
 
-# 7. Filter and Export
-fortigate_devices = [d for d in all_devices 
-                     if 'FortiGate' in d.get('productModel', '') or 
-                        'FortiWiFi' in d.get('productModel', '')]
-export_to_csv(fortigate_devices)
+# 7. Authenticate with Asset Management API
+asset_token = authenticate(username, password, "assetmanagement")
+
+# 8. Get devices for FortiSwitch (requires both patterns!)
+all_devices = []
+for account_id in account_ids:
+    for pattern in ['F', 'S']:
+        response = post("/ES/api/registration/v3/products/list",
+                       token=asset_token,
+                       json={'serialNumber': pattern, 'accountId': account_id})
+        all_devices.extend(response.get('assets', []))
+
+# 9. Deduplicate and filter
+unique_devices = deduplicate_by_serial(all_devices)
+fortiswitches = [d for d in unique_devices 
+                 if d['productModel'].startswith('FortiSwitch')]
+
+# 10. Enhance with metadata and export
+for device in fortiswitches:
+    account_id = device['accountId']
+    device['company'] = account_metadata[account_id]['company']
+    device['ou_name'] = account_metadata[account_id]['ou_name']
+
+export_to_csv(fortiswitches)
 ```
 
 ---
@@ -545,34 +583,16 @@ export_to_csv(fortigate_devices)
 ### Official Documentation
 - [FortiCloud IAM Documentation](https://docs.fortinet.com/document/forticloud/25.2.0/identity-access-management-iam/)
 - [API Users Guide](https://docs.fortinet.com/document/forticloud/25.2.0/identity-access-management-iam/927656/api-users)
-- [FortiAuthenticator REST API](http://docs.fortinet.com/document/fortiauthenticator/6.1.2/rest-api-solution-guide/498666/oauth-server-token-oauth-token)
+- [OAuth 2.0 Password Grant](https://oauth.net/2/grant-types/password/)
 
 ### API Specifications
-- Asset Management V3 API: `apireference/Asset Management V3 Product.json`
-- Organization V1 API: `apireference/Organization V1 Units.json`
-- IAM V1 API: `apireference/IAM V1 Accounts.json`
-
-### Related Resources
-- [OAuth 2.0 Password Grant](https://oauth.net/2/grant-types/password/)
-- [ISO 8601 Date Format](https://en.wikipedia.org/wiki/ISO_8601)
+Located in `apireference/` directory:
+- Asset Management V3 Product.json
+- Organization V1 Units.json
+- IAM V1 Accounts.json
 
 ---
 
-## Changelog
-
-### Version 2.0 (September 30, 2025)
-- ✅ Updated with production-validated endpoints
-- ✅ Added account discovery workflow
-- ✅ Documented actual authentication format (password grant)
-- ✅ Added real-world data models and examples
-- ✅ Included production performance metrics
-- ✅ Added complete working example
-- ✅ Documented all error scenarios encountered
-- ✅ Added device type filtering patterns
-
-### Version 1.0 (September 29, 2025)
-- Initial documentation based on API exploration
-
----
-
-*This documentation reflects actual production usage with 698 devices across 17 accounts. All endpoints, parameters, and response formats have been validated.*
+**Document Version:** 3.0  
+**Last Updated:** September 30, 2025  
+**Validated Against:** Production API with 1000+ devices across 17 accounts

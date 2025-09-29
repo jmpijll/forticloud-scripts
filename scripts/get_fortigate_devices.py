@@ -83,12 +83,12 @@ class FortiCloudAPI:
             print(f"ERROR: Authentication failed for {client_id}: {e}")
             raise
 
-    def discover_accounts(self) -> List[int]:
+    def discover_accounts(self) -> tuple[List[int], Dict[int, Dict]]:
         """
-        Automatically discover all accessible account IDs.
+        Automatically discover all accessible account IDs and their metadata.
 
         Returns:
-            List of account IDs
+            Tuple of (account IDs list, account metadata dict)
         """
         print("Discovering accounts...")
         
@@ -102,10 +102,18 @@ class FortiCloudAPI:
             
             self._log(f"Found organization {org_id} with {len(ou_list)} OUs")
             
+            # Build OU mapping
+            ou_map = {}
+            for ou in ou_list:
+                ou_map[ou['id']] = ou.get('name', 'Unknown OU')
+            if org_id:
+                ou_map[org_id] = org_data.get('organizationUnits', {}).get('name', 'Main Organization')
+            
             # Step 2: Get accounts for each OU
             self.iam_token = self.authenticate("iam")
             all_accounts = []
             account_ids_set = set()
+            account_metadata = {}
             
             # Query main org
             if org_id:
@@ -117,14 +125,23 @@ class FortiCloudAPI:
                 accounts = self._get_accounts(ou['id'])
                 all_accounts.extend(accounts)
             
-            # De-duplicate
+            # Build metadata and de-duplicate
             for account in all_accounts:
-                account_ids_set.add(account['id'])
+                account_id = account['id']
+                if account_id not in account_ids_set:
+                    account_ids_set.add(account_id)
+                    parent_id = account.get('parentId')
+                    account_metadata[account_id] = {
+                        'company': account.get('company', 'N/A'),
+                        'email': account.get('email', 'N/A'),
+                        'parent_id': parent_id,
+                        'ou_name': ou_map.get(parent_id, 'Unknown')
+                    }
             
             account_ids = sorted(list(account_ids_set))
             print(f"Discovered {len(account_ids)} account(s)")
             
-            return account_ids
+            return account_ids, account_metadata
             
         except Exception as e:
             print(f"ERROR: Account discovery failed: {e}")
@@ -173,7 +190,6 @@ class FortiCloudAPI:
             
             payload = {
                 'serialNumber': serial_pattern,
-                'status': 'Registered',
                 'accountId': account_id
             }
             
@@ -206,13 +222,13 @@ class FortiCloudAPI:
         self.session.close()
 
 
-def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] = None) -> List[Dict]:
+def flatten_device_data(devices: List[Dict], account_metadata: Dict[int, Dict]) -> List[Dict]:
     """
     Flatten device data to include one row per entitlement per device.
 
     Args:
         devices: List of device dictionaries
-        device_filter: Optional filter function
+        account_metadata: Dictionary mapping account IDs to their metadata
 
     Returns:
         List of flattened dictionaries for CSV export
@@ -220,15 +236,19 @@ def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] =
     flattened = []
     
     for device in devices:
-        # Apply filter if provided
-        if device_filter and not device_filter(device):
-            continue
-        
         serial_number = device.get('serialNumber', 'N/A')
         description = device.get('description', '')
         product_model = device.get('productModel', 'N/A')
         registration_date = device.get('registrationDate', 'N/A')
         folder_path = device.get('folderPath', 'N/A')
+        account_id = device.get('accountId')
+        device_status = device.get('status', 'N/A')
+        is_decommissioned = device.get('isDecommissioned', False)
+        
+        # Get account metadata
+        account_info = account_metadata.get(account_id, {})
+        company = account_info.get('company', 'N/A')
+        ou_name = account_info.get('ou_name', 'N/A')
         
         entitlements = device.get('entitlements', [])
         
@@ -237,13 +257,18 @@ def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] =
                 'Serial Number': serial_number,
                 'Product Model': product_model,
                 'Description': description,
+                'Account ID': account_id,
+                'Company': company,
+                'Organizational Unit': ou_name,
                 'Registration Date': registration_date,
+                'Device Status': device_status,
+                'Is Decommissioned': 'Yes' if is_decommissioned else 'No',
                 'Folder Path': folder_path,
                 'Support Level': 'No Coverage',
                 'Support Type': 'N/A',
                 'Start Date': 'N/A',
                 'End Date': 'N/A',
-                'Status': 'Expired/None'
+                'Contract Status': 'Expired/None'
             })
         else:
             for entitlement in entitlements:
@@ -251,27 +276,32 @@ def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] =
                 end_date = entitlement.get('endDate', 'N/A')
                 
                 # Determine status
-                status = 'Active'
+                contract_status = 'Active'
                 if end_date != 'N/A':
                     try:
                         from dateutil import parser
                         end_dt = parser.parse(end_date)
                         if end_dt < datetime.now(end_dt.tzinfo):
-                            status = 'Expired'
+                            contract_status = 'Expired'
                     except:
-                        status = 'Unknown'
+                        contract_status = 'Unknown'
                 
                 flattened.append({
                     'Serial Number': serial_number,
                     'Product Model': product_model,
                     'Description': description,
+                    'Account ID': account_id,
+                    'Company': company,
+                    'Organizational Unit': ou_name,
                     'Registration Date': registration_date,
+                    'Device Status': device_status,
+                    'Is Decommissioned': 'Yes' if is_decommissioned else 'No',
                     'Folder Path': folder_path,
                     'Support Level': entitlement.get('levelDesc', 'N/A'),
                     'Support Type': entitlement.get('typeDesc', 'N/A'),
                     'Start Date': start_date,
                     'End Date': end_date,
-                    'Status': status
+                    'Contract Status': contract_status
                 })
     
     return flattened
@@ -287,8 +317,10 @@ def export_to_csv(data: List[Dict], filename: str) -> bool:
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = [
                 'Serial Number', 'Product Model', 'Description',
-                'Registration Date', 'Folder Path', 'Support Level',
-                'Support Type', 'Start Date', 'End Date', 'Status'
+                'Account ID', 'Company', 'Organizational Unit',
+                'Registration Date', 'Device Status', 'Is Decommissioned',
+                'Folder Path', 'Support Level', 'Support Type',
+                'Start Date', 'End Date', 'Contract Status'
             ]
             
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -335,7 +367,7 @@ def main():
     try:
         # Step 1: Discover accounts automatically
         print("Step 1: Discovering accounts...")
-        account_ids = api.discover_accounts()
+        account_ids, account_metadata = api.discover_accounts()
         print(f"Found {len(account_ids)} account(s): {account_ids[:5]}{'...' if len(account_ids) > 5 else ''}")
         print()
         
@@ -349,13 +381,13 @@ def main():
         print(f"Retrieved {len(all_devices)} total devices")
         print()
         
-        # Step 3: Filter for FortiGate/FortiWiFi
+        # Step 3: Filter for FortiGate/FortiWiFi devices only
         print("Step 3: Filtering FortiGate/FortiWiFi devices...")
-        def is_fortigate_or_fortiwifi(device):
-            model = device.get('productModel', '')
-            return 'FortiGate' in model or 'FortiWiFi' in model
-        
-        filtered_devices = [d for d in all_devices if is_fortigate_or_fortiwifi(d)]
+        filtered_devices = [
+            d for d in all_devices 
+            if d.get('productModel', '').startswith('FortiGate') or 
+               d.get('productModel', '').startswith('FortiWiFi')
+        ]
         print(f"Found {len(filtered_devices)} FortiGate/FortiWiFi devices")
         print()
         
@@ -365,7 +397,7 @@ def main():
         
         # Step 4: Process data
         print("Step 4: Processing device data...")
-        flattened_data = flatten_device_data(filtered_devices)
+        flattened_data = flatten_device_data(filtered_devices, account_metadata)
         print(f"Processed {len(flattened_data)} rows (including entitlements)")
         print()
         
