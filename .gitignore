@@ -46,8 +46,17 @@ Thumbs.db
 
 # Output files
 *.csv
-*.json
 *.log
+
+# Sensitive files
+API_Credential*.txt
+*.env*
+!env.template
+
+# Reference data (not for production)
+apireference/
+forticloudexport/
+COMPLETION_SUMMARY.md
 
 # Testing
 .pytest_cache/

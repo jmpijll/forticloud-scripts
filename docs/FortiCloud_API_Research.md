@@ -113,19 +113,19 @@ Content-Type: application/json
   "status": 0,
   "message": "Request processed successfully",
   "organizationUnits": {
-    "orgId": 1874108,
+    "orgId": 1234567,
     "name": "Main Organization",
     "orgUnits": [
       {
-        "id": 1874108,
-        "name": "Flowerbed Engineering B.V.",
+        "id": 1234567,
+        "name": "Main Organization",
         "parentID": 0,
         "desc": ""
       },
       {
-        "id": 1935020,
-        "name": "Loods 5",
-        "parentID": 1874108,
+        "id": 7654321,
+        "name": "Customer Sub-OU",
+        "parentID": 1234567,
         "desc": ""
       }
     ]
@@ -143,7 +143,7 @@ Authorization: Bearer {iam_token}
 Content-Type: application/json
 
 {
-  "parentId": 1874108
+  "parentId": 1234567
 }
 ```
 
@@ -154,10 +154,10 @@ Content-Type: application/json
   "message": "Request processed successfully",
   "accounts": [
     {
-      "id": 883938,
-      "parentId": 1874108,
-      "company": "Flowerbed Engineering",
-      "email": "fbe.forticld@flowerbed.nl",
+      "id": 123456,
+      "parentId": 1234567,
+      "company": "Example Company",
+      "email": "api.user@example.com",
       "firstName": "API",
       "lastName": "User"
     }
@@ -186,7 +186,7 @@ Content-Type: application/json
 
 {
   "serialNumber": "F",
-  "accountId": 883938
+  "accountId": 123456
 }
 ```
 
@@ -209,7 +209,7 @@ Content-Type: application/json
       "serialNumber": "FGT60FTK12345678",
       "productModel": "FortiGate-60F",
       "description": "Main Firewall",
-      "accountId": 883938,
+      "accountId": 123456,
       "status": "Registered",
       "isDecommissioned": false,
       "registrationDate": "2023-05-15T10:20:30",
