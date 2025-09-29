@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FortiCloud API - Get FortiGate/FortiWiFi Devices
+FortiCloud API - Get FortiAP Devices
 
 Idempotent script that:
 1. Discovers all accessible accounts automatically
 2. Tests API connectivity
-3. Retrieves all FortiGate and FortiWiFi devices
+3. Retrieves all FortiAP devices
 4. Exports to CSV with entitlements/contracts
 
 Author: FortiCloud API Project
@@ -48,15 +48,7 @@ class FortiCloudAPI:
             print(f"[DEBUG] {message}")
 
     def authenticate(self, client_id: str) -> str:
-        """
-        Authenticate with FortiCloud API for specific service.
-
-        Args:
-            client_id: Service client ID (assetmanagement, iam, organization)
-
-        Returns:
-            Access token
-        """
+        """Authenticate with FortiCloud API for specific service."""
         try:
             self._log(f"Authenticating with {client_id} API...")
             
@@ -84,16 +76,11 @@ class FortiCloudAPI:
             raise
 
     def discover_accounts(self) -> List[int]:
-        """
-        Automatically discover all accessible account IDs.
-
-        Returns:
-            List of account IDs
-        """
+        """Automatically discover all accessible account IDs."""
         print("Discovering accounts...")
         
         try:
-            # Step 1: Get organizational units
+            # Get organizational units
             self.org_token = self.authenticate("organization")
             org_data = self._get_organizational_units()
             
@@ -102,22 +89,19 @@ class FortiCloudAPI:
             
             self._log(f"Found organization {org_id} with {len(ou_list)} OUs")
             
-            # Step 2: Get accounts for each OU
+            # Get accounts for each OU
             self.iam_token = self.authenticate("iam")
             all_accounts = []
             account_ids_set = set()
             
-            # Query main org
             if org_id:
                 accounts = self._get_accounts(org_id)
                 all_accounts.extend(accounts)
             
-            # Query each OU
             for ou in ou_list:
                 accounts = self._get_accounts(ou['id'])
                 all_accounts.extend(accounts)
             
-            # De-duplicate
             for account in all_accounts:
                 account_ids_set.add(account['id'])
             
@@ -152,20 +136,10 @@ class FortiCloudAPI:
         return data.get('accounts', []) if data.get('status') == 0 else []
 
     def get_devices(self, account_id: int, serial_pattern: str = "F") -> List[Dict]:
-        """
-        Retrieve devices for a specific account.
-
-        Args:
-            account_id: Account ID to query
-            serial_pattern: Serial number pattern (default "F" for all Fortinet)
-
-        Returns:
-            List of device dictionaries
-        """
+        """Retrieve devices for a specific account."""
         devices = []
         
         try:
-            # Authenticate for asset management if needed
             if not self.asset_token:
                 self.asset_token = self.authenticate("assetmanagement")
             
@@ -193,8 +167,6 @@ class FortiCloudAPI:
                     assets = []
                 devices.extend(assets)
                 self._log(f"Account {account_id}: Retrieved {len(devices)} devices")
-            else:
-                self._log(f"Account {account_id}: API error - {data.get('message')}")
                 
         except Exception as e:
             print(f"  ERROR: Failed to retrieve devices for account {account_id}: {e}")
@@ -206,24 +178,11 @@ class FortiCloudAPI:
         self.session.close()
 
 
-def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] = None) -> List[Dict]:
-    """
-    Flatten device data to include one row per entitlement per device.
-
-    Args:
-        devices: List of device dictionaries
-        device_filter: Optional filter function
-
-    Returns:
-        List of flattened dictionaries for CSV export
-    """
+def flatten_device_data(devices: List[Dict]) -> List[Dict]:
+    """Flatten device data to include one row per entitlement per device."""
     flattened = []
     
     for device in devices:
-        # Apply filter if provided
-        if device_filter and not device_filter(device):
-            continue
-        
         serial_number = device.get('serialNumber', 'N/A')
         description = device.get('description', '')
         product_model = device.get('productModel', 'N/A')
@@ -250,7 +209,6 @@ def flatten_device_data(devices: List[Dict], device_filter: Optional[callable] =
                 start_date = entitlement.get('startDate', 'N/A')
                 end_date = entitlement.get('endDate', 'N/A')
                 
-                # Determine status
                 status = 'Active'
                 if end_date != 'N/A':
                     try:
@@ -306,7 +264,7 @@ def export_to_csv(data: List[Dict], filename: str) -> bool:
 def main():
     """Main execution function."""
     print("=" * 70)
-    print("FortiCloud API - FortiGate/FortiWiFi Device Export")
+    print("FortiCloud API - FortiAP Device Export")
     print("=" * 70)
     print()
     
@@ -319,61 +277,46 @@ def main():
     api_base_url = os.getenv('FORTICLOUD_API_BASE_URL')
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
     
-    # Validate configuration
     if not all([username, password, auth_url, api_base_url]):
         print("ERROR: Missing required environment variables.")
-        print("Please ensure your .env file contains:")
-        print("  - FORTICLOUD_CLIENT_ID")
-        print("  - FORTICLOUD_CLIENT_SECRET")
-        print("  - FORTICLOUD_AUTH_URL")
-        print("  - FORTICLOUD_API_BASE_URL")
         sys.exit(1)
     
-    # Initialize API client
     api = FortiCloudAPI(username, password, auth_url, api_base_url, debug)
     
     try:
-        # Step 1: Discover accounts automatically
+        # Step 1: Discover accounts
         print("Step 1: Discovering accounts...")
         account_ids = api.discover_accounts()
-        print(f"Found {len(account_ids)} account(s): {account_ids[:5]}{'...' if len(account_ids) > 5 else ''}")
+        print(f"Found {len(account_ids)} account(s)")
         print()
         
-        # Step 2: Retrieve devices from all accounts
-        print(f"Step 2: Retrieving devices from {len(account_ids)} account(s)...")
+        # Step 2: Retrieve devices (using "F" pattern then filter)
+        print(f"Step 2: Retrieving FortiAP devices from {len(account_ids)} account(s)...")
         all_devices = []
         for account_id in account_ids:
-            devices = api.get_devices(account_id)
-            all_devices.extend(devices)
-            print(f"  Account {account_id}: {len(devices)} devices")
-        print(f"Retrieved {len(all_devices)} total devices")
+            devices = api.get_devices(account_id, serial_pattern="F")
+            # Filter for FortiAP
+            fortiap_devices = [d for d in devices if 'FortiAP' in d.get('productModel', '')]
+            all_devices.extend(fortiap_devices)
+            print(f"  Account {account_id}: {len(fortiap_devices)} FortiAP devices")
+        print(f"Retrieved {len(all_devices)} FortiAP devices")
         print()
         
-        # Step 3: Filter for FortiGate/FortiWiFi
-        print("Step 3: Filtering FortiGate/FortiWiFi devices...")
-        def is_fortigate_or_fortiwifi(device):
-            model = device.get('productModel', '')
-            return 'FortiGate' in model or 'FortiWiFi' in model
-        
-        filtered_devices = [d for d in all_devices if is_fortigate_or_fortiwifi(d)]
-        print(f"Found {len(filtered_devices)} FortiGate/FortiWiFi devices")
-        print()
-        
-        if not filtered_devices:
-            print("WARNING: No FortiGate/FortiWiFi devices found")
+        if not all_devices:
+            print("WARNING: No FortiAP devices found")
             sys.exit(0)
         
-        # Step 4: Process data
-        print("Step 4: Processing device data...")
-        flattened_data = flatten_device_data(filtered_devices)
+        # Step 3: Process data
+        print("Step 3: Processing device data...")
+        flattened_data = flatten_device_data(all_devices)
         print(f"Processed {len(flattened_data)} rows (including entitlements)")
         print()
         
-        # Step 5: Export to CSV
+        # Step 4: Export to CSV
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_filename = f'fortigate_devices_{timestamp}.csv'
+        output_filename = f'fortiap_devices_{timestamp}.csv'
         
-        print(f"Step 5: Exporting to CSV ({output_filename})...")
+        print(f"Step 4: Exporting to CSV ({output_filename})...")
         if export_to_csv(flattened_data, output_filename):
             print()
             print("=" * 70)
@@ -381,7 +324,7 @@ def main():
             print("=" * 70)
             print(f"Output file: {output_filename}")
             print(f"Total rows: {len(flattened_data)}")
-            print(f"Unique devices: {len(filtered_devices)}")
+            print(f"Unique devices: {len(all_devices)}")
             print()
         else:
             sys.exit(1)
