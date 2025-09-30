@@ -59,6 +59,12 @@ forticloudexport/
 COMPLETION_SUMMARY.md
 SECURITY_AUDIT.md
 
+# Temporary summary/checklist files (not for production)
+*_CHECKLIST.md
+*_SUMMARY.md
+PRE_PUBLIC_*.md
+FINAL_*.md
+
 # Testing
 .pytest_cache/
 .coverage
