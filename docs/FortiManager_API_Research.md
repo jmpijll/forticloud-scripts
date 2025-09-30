@@ -944,7 +944,7 @@ Common scenarios to handle:
 The following configuration was tested and validated:
 
 **Test Environment**:
-- FortiManager: manager.flowerbed.nl
+- FortiManager: fortimanager.example.com
 - API Version: 7.4.8
 - FortiGates: 62 devices across 11 ADOMs
 - FortiGate Versions: v7.0.x, v7.2.x, v7.4.x
@@ -1253,8 +1253,8 @@ DEBUG=false
 Alternative to environment variables, create `fortimanagerapikey` file:
 
 ```
-apikey=dx15ichrh937f8xcxtscwdn3x37hpy61
-url=manager.flowerbed.nl
+apikey=your_api_key_here
+url=your.fortimanager.hostname
 ```
 
 ---
