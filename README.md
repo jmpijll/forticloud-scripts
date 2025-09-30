@@ -1,6 +1,11 @@
-# FortiCloud API Asset Management
+# Fortinet API Asset Management
 
-Automated scripts to retrieve and export FortiGate, FortiSwitch, and FortiAP device information from FortiCloud using the Asset Management API.
+Automated scripts to retrieve and export FortiGate, FortiSwitch, and FortiAP device information from FortiCloud and FortiManager using their respective APIs.
+
+## 📦 What's Included
+
+- **FortiCloud Scripts** - Asset management and contract tracking
+- **FortiManager Scripts** - Operational device management and status monitoring
 
 ## 🎯 Features
 
@@ -123,12 +128,16 @@ forticloud-assets/
 ├── requirements.txt        # Python dependencies
 ├── env.template            # Environment template
 ├── docs/
-│   └── FortiCloud_API_Research.md  # API documentation
+│   ├── FortiCloud_API_Research.md    # FortiCloud API documentation
+│   └── FortiManager_API_Research.md  # FortiManager API documentation
 ├── scripts/
-│   ├── get_fortigate_devices.py    # FortiGate/FortiWiFi export
-│   ├── get_fortiswitch_devices.py  # FortiSwitch export
-│   ├── get_fortiap_devices.py      # FortiAP export
-│   └── test_connection.py          # Test API connectivity
+│   ├── get_fortigate_devices.py      # FortiCloud FortiGate export
+│   ├── get_fortiswitch_devices.py    # FortiCloud FortiSwitch export
+│   ├── get_fortiap_devices.py        # FortiCloud FortiAP export
+│   ├── fmg_get_fortigate_devices.py  # FortiManager FortiGate export
+│   ├── fmg_get_fortiswitch_devices.py # FortiManager FortiSwitch export
+│   ├── fmg_get_fortiap_devices.py    # FortiManager FortiAP export
+│   └── test_connection.py            # Test API connectivity
 └── venv/                   # Python virtual environment
 ```
 
@@ -193,10 +202,121 @@ The scripts handle this automatically by querying both patterns and deduplicatin
 ### Python/pip not found
 → Install Python 3.12+ and ensure it's in your PATH
 
+---
+
+## 🔧 FortiManager Scripts
+
+Additional scripts are provided for FortiManager to retrieve operational device information.
+
+### FortiManager Features
+
+- **Real-time Device Status** - Connection status and health monitoring
+- **ADOM-based Organization** - Multi-tenancy support
+- **Detailed Version Info** - OS version, build numbers, patch levels
+- **HA Configuration** - High availability status and cluster info
+- **No Licensing Needed** - Direct API access with API key
+
+### FortiManager Quick Start
+
+#### 1. Configure API Access
+
+Create a `fortimanagerapikey` file in the project root:
+
+```
+apikey=your_api_key_here
+url=your.fortimanager.hostname
+```
+
+Or use environment variables:
+
+```bash
+FORTIMANAGER_HOST=your.fortimanager.hostname
+FORTIMANAGER_API_KEY=your_api_key_here
+FORTIMANAGER_VERIFY_SSL=true
+DEBUG=false
+```
+
+#### 2. Generate API Key
+
+On FortiManager CLI:
+
+```
+config system admin user
+    edit api_user_001
+        set user_type api
+        set rpc-permit read-write
+    next
+end
+
+execute api-user generate-key api_user_001
+```
+
+#### 3. Run FortiManager Scripts
+
+```powershell
+# Export FortiGate devices from FortiManager
+python scripts/fmg_get_fortigate_devices.py
+
+# Export FortiSwitch devices from FortiManager
+python scripts/fmg_get_fortiswitch_devices.py
+
+# Export FortiAP devices from FortiManager
+python scripts/fmg_get_fortiap_devices.py
+```
+
+### FortiManager CSV Output
+
+FortiManager exports include:
+
+| Column | Description |
+|--------|-------------|
+| **Serial Number** | Device serial number |
+| **Device Name** | Device name in FortiManager |
+| **Hostname** | Device hostname |
+| **Product Model** | Device model/platform |
+| **ADOM** | Administrative Domain |
+| **Management IP** | Device management IP address |
+| **Connection Status** | Connected, Disconnected, Unknown |
+| **Management Mode** | Normal, Unreg, etc. |
+| **OS Version** | FortiOS version and build |
+| **HA Mode** | Standalone, Active-Passive, Cluster |
+| **HA Cluster Name** | Name of HA cluster (if applicable) |
+| **HA Role** | Primary or Secondary (for HA members) |
+| **HA Member Status** | Online, Offline status of HA member |
+| **HA Priority** | Failover priority value |
+| **Last Checked** | Last communication timestamp |
+
+**Note:** HA clusters are expanded into separate rows for each member, making it easy to identify and track individual cluster devices.
+
+### FortiCloud vs FortiManager
+
+| Feature | FortiCloud | FortiManager |
+|---------|------------|--------------|
+| **License Tracking** | ✅ Yes | ❌ No |
+| **Support Contracts** | ✅ Yes | ❌ No |
+| **Registration Dates** | ✅ Yes | ❌ No |
+| **Real-time Status** | ❌ Limited | ✅ Yes |
+| **OS Version Details** | ❌ Limited | ✅ Yes |
+| **Configuration Access** | ❌ No | ✅ Yes |
+| **HA Configuration** | ❌ No | ✅ Yes |
+
+**Recommendation:** Use both for complete visibility:
+- **FortiCloud** for contract/license management
+- **FortiManager** for operational status and configuration
+
+### Documentation
+
+- **FortiCloud API**: `docs/FortiCloud_API_Research.md`
+- **FortiManager API**: `docs/FortiManager_API_Research.md`
+
+---
+
 ## 🔒 Security
 
 - **Never commit `.env` file** (already in `.gitignore`)
+- **Never commit `fortimanagerapikey` file** (already in `.gitignore`)
 - API credentials provide read-only access to asset information
+- FortiManager API keys are permanent - rotate regularly
 - Rotate API credentials quarterly
 - Store CSV exports securely (contain asset inventory)
 
@@ -215,4 +335,5 @@ For script issues:
 ---
 
 **Last Updated:** September 30, 2025  
-**API Version:** Asset Management V3, Organization V1, IAM V1
+**FortiCloud API Version:** Asset Management V3, Organization V1, IAM V1  
+**FortiManager API Version:** JSON RPC (7.4.8)
