@@ -9,6 +9,7 @@ Automated scripts to retrieve and export FortiGate, FortiSwitch, and FortiAP dev
 
 ## 🎯 Features
 
+### FortiCloud Features
 - **Automatic Account Discovery** - No manual account ID configuration needed
 - **Multi-Device Support** - Separate scripts for FortiGate, FortiSwitch, and FortiAP
 - **Complete Data** - Includes active AND decommissioned devices
@@ -16,17 +17,36 @@ Automated scripts to retrieve and export FortiGate, FortiSwitch, and FortiAP dev
 - **Contract History** - All entitlements including expired support contracts
 - **CSV Export** - Easy-to-use format for Excel, Power BI, or other tools
 
+### FortiManager Features
+- **Real-time Operational Status** - Connection status and health monitoring
+- **ADOM Organization** - Multi-tenancy support with ADOM tracking
+- **HA Cluster Expansion** - Each HA member gets separate row with cluster details
+- **Accurate Firmware Versions** - Real-time OS version and build information
+- **Parent Device Tracking** - FortiSwitch/AP linked to managing FortiGates
+- **Proxy API** - Retrieves FortiSwitch/AP from FortiGates via proxy endpoint
+
 ## 📋 Prerequisites
 
+### For FortiCloud Scripts
 - **Python 3.12+**
 - **FortiCloud API User** with Organization scope
   - Access to Organization API
   - Access to IAM API  
   - Access to Asset Management API
 
+### For FortiManager Scripts
+- **Python 3.12+** (same environment as FortiCloud)
+- **FortiManager 7.0+** (tested on 7.4.8)
+- **FortiManager API User** with:
+  - User type: `api`
+  - RPC permissions: `read-write` (required for proxy API)
+- **Network Access** to FortiManager (HTTPS/443)
+
 ## 🚀 Quick Start
 
-### 1. Install Python Dependencies
+### Common Setup (Both Platforms)
+
+#### 1. Install Python Dependencies
 
 ```powershell
 # Create and activate virtual environment
@@ -37,9 +57,13 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 2. Configure API Credentials
+---
 
-Copy `env.template` to `.env` and add your credentials:
+### FortiCloud Setup
+
+#### 2a. Configure FortiCloud API Credentials
+
+Copy `env.template` to `.env` and add your FortiCloud credentials:
 
 ```bash
 FORTICLOUD_CLIENT_ID=your_api_user_id
@@ -49,12 +73,12 @@ FORTICLOUD_API_BASE_URL=https://support.fortinet.com/ES/api/registration/v3
 DEBUG=false
 ```
 
-Get your API credentials from:  
+**Get API credentials from:**  
 `FortiCloud Portal` → `IAM` → `API Users` → `Create API User`
 
-**Important:** API user must have **Organization scope** type.
+**⚠️ Important:** API user must have **Organization scope** type.
 
-### 3. Run Scripts
+#### 3a. Run FortiCloud Scripts
 
 ```powershell
 # Activate virtual environment (if not already active)
@@ -70,10 +94,74 @@ python scripts/get_fortiap_devices.py
 python scripts/get_fortigate_devices.py
 ```
 
-Each script will:
+Each FortiCloud script will:
 1. Auto-discover all accessible accounts and OUs
 2. Retrieve all devices from all accounts
 3. Filter by device type
+4. Export to timestamped CSV file
+
+---
+
+### FortiManager Setup
+
+#### 2b. Create FortiManager API User
+
+On your FortiManager CLI:
+
+```bash
+config system admin user
+    edit api_user_001
+        set user_type api
+        set rpc-permit read-write
+    next
+end
+
+execute api-user generate-key api_user_001
+```
+
+**⚠️ Important:** `rpc-permit read-write` is required for the proxy API to work.
+
+Copy the generated API key.
+
+#### 3b. Configure FortiManager API Credentials
+
+**Option 1:** Create `fortimanagerapikey` file in project root:
+
+```
+apikey=your_api_key_here
+url=your.fortimanager.hostname
+```
+
+**Option 2:** Add to `.env` file:
+
+```bash
+FORTIMANAGER_HOST=your.fortimanager.hostname
+FORTIMANAGER_API_KEY=your_api_key_here
+FORTIMANAGER_VERIFY_SSL=true
+```
+
+**Note:** For self-signed certificates, set `FORTIMANAGER_VERIFY_SSL=false`
+
+#### 4b. Run FortiManager Scripts
+
+```powershell
+# Activate virtual environment (if not already active)
+.\venv\Scripts\Activate.ps1
+
+# Export FortiGate devices (with HA expansion)
+python scripts/fmg_get_fortigate_devices.py
+
+# Export FortiSwitch devices (via proxy to FortiGates)
+python scripts/fmg_get_fortiswitch_devices.py
+
+# Export FortiAP devices (via proxy to FortiGates)
+python scripts/fmg_get_fortiap_devices.py
+```
+
+Each FortiManager script will:
+1. Retrieve all managed FortiGate devices
+2. Query FortiGates via proxy API for FortiSwitch/AP (where applicable)
+3. Expand HA clusters into separate rows
 4. Export to timestamped CSV file
 
 ## 📊 CSV Output Format
@@ -99,6 +187,10 @@ All CSVs include the following columns:
 | **Contract Status** | Active, Expired, or Unknown |
 
 **Note:** Each device may have multiple rows (one per entitlement/contract).
+
+---
+
+### FortiManager CSV Output
 
 ## 🔍 Understanding the Data
 
@@ -187,84 +279,53 @@ The scripts handle this automatically by querying both patterns and deduplicatin
 
 ## 🐛 Troubleshooting
 
-### "Missing required environment variables"
+### FortiCloud Issues
+
+**"Missing required environment variables"**
 → Ensure `.env` file exists and contains all required variables
 
-### "Authentication failed: invalid_client"
+**"Authentication failed: invalid_client"**
 → Verify API User ID and Password are correct
 
-### "Request should include a positive number for accountId"
+**"Request should include a positive number for accountId"**
 → API user must have **Organization scope** type (not Account scope)
 
-### No devices found
+**No devices found**
 → Verify API user has access to Asset Management API
 
-### Python/pip not found
+### FortiManager Issues
+
+**"No permission for the resource" when running FortiSwitch/AP scripts**
+→ API user needs `rpc-permit read-write` (not just `read`)
+
+**SSL Certificate Error**
+→ For self-signed certificates: Set `FORTIMANAGER_VERIFY_SSL=false` in environment or use `$env:FORTIMANAGER_VERIFY_SSL="false"` before running script
+
+**"Connection timeout" or "Connection refused"**
+→ Verify network connectivity to FortiManager on port 443
+→ Ensure FortiManager API is enabled (`config system global` → `set admin-https-pki-required disable`)
+
+**Empty FortiSwitch/AP results**
+→ Normal if no devices are connected to FortiGates
+→ FortiSwitch/AP are managed locally by FortiGates, not centrally by FortiManager
+
+**Missing HA cluster members**
+→ Ensure API returns data with `loadsub=1` (already configured in scripts)
+
+### General Issues
+
+**Python/pip not found**
 → Install Python 3.12+ and ensure it's in your PATH
+
+**Module not found errors**
+→ Activate virtual environment: `.\venv\Scripts\Activate.ps1`
+→ Reinstall dependencies: `pip install -r requirements.txt`
 
 ---
 
-## 🔧 FortiManager Scripts
+## 📊 CSV Output Formats
 
-Additional scripts are provided for FortiManager to retrieve operational device information.
-
-### FortiManager Features
-
-- **Real-time Device Status** - Connection status and health monitoring
-- **ADOM-based Organization** - Multi-tenancy support
-- **Detailed Version Info** - OS version, build numbers, patch levels
-- **HA Configuration** - High availability status and cluster info
-- **No Licensing Needed** - Direct API access with API key
-
-### FortiManager Quick Start
-
-#### 1. Configure API Access
-
-Create a `fortimanagerapikey` file in the project root:
-
-```
-apikey=your_api_key_here
-url=your.fortimanager.hostname
-```
-
-Or use environment variables:
-
-```bash
-FORTIMANAGER_HOST=your.fortimanager.hostname
-FORTIMANAGER_API_KEY=your_api_key_here
-FORTIMANAGER_VERIFY_SSL=true
-DEBUG=false
-```
-
-#### 2. Generate API Key
-
-On FortiManager CLI:
-
-```
-config system admin user
-    edit api_user_001
-        set user_type api
-        set rpc-permit read-write
-    next
-end
-
-execute api-user generate-key api_user_001
-```
-
-#### 3. Run FortiManager Scripts
-
-```powershell
-# Export FortiGate devices from FortiManager
-python scripts/fmg_get_fortigate_devices.py
-
-# Export FortiSwitch devices from FortiManager
-python scripts/fmg_get_fortiswitch_devices.py
-
-# Export FortiAP devices from FortiManager
-python scripts/fmg_get_fortiap_devices.py
-```
-
-### FortiManager CSV Output
+### FortiCloud CSV Output
 
 FortiManager exports include:
 
@@ -288,7 +349,25 @@ FortiManager exports include:
 
 **Note:** HA clusters are expanded into separate rows for each member, making it easy to identify and track individual cluster devices.
 
-### FortiCloud vs FortiManager
+#### FortiSwitch CSV Columns
+- Serial Number, Device Name, Description, Device Type
+- Parent FortiGate (Name, Serial, Platform, IP, ADOM)
+- Connection Status, Firmware Version, Model
+- Switch Profile, PoE Detection, Max PoE Budget
+- Join Time, Query Timestamp
+
+#### FortiAP CSV Columns
+- Serial Number, Device Name, Board MAC, IP Address
+- Parent FortiGate (Name, Serial, Platform, IP, ADOM)
+- Connection State, Admin Status, Location
+- Firmware, WTP Profile, WTP Mode, Region
+- Max Clients, Client Count, LED State
+- Radio 1/2 Configuration (Channel, Bandwidth, Standard, TX Power)
+- Query Timestamp
+
+---
+
+### FortiCloud vs FortiManager Comparison
 
 | Feature | FortiCloud | FortiManager |
 |---------|------------|--------------|
