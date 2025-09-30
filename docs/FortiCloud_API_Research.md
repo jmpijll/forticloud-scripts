@@ -273,8 +273,8 @@ FortiSwitch devices start with **TWO** different patterns:
 
 | Pattern | Example Serials | Models |
 |---------|-----------------|--------|
-| **F** | FS1E48T422003020 | FortiSwitch 1024E, 1048E |
-| **S** | S108EN5918003626, S124FPTF24009790, S148FFTF23026095 | All other models (108E/F, 124E/F, 148F, 224E, 248E, 424E, 448E, etc.) |
+| **F** | FS1E48T12345678 | FortiSwitch 1024E, 1048E |
+| **S** | S108EN1234567890, S124FPTF12345678, S148FFTF12345678 | All other models (108E/F, 124E/F, 148F, 224E, 248E, 424E, 448E, etc.) |
 
 **Solution:**
 ```python
@@ -297,7 +297,7 @@ fortiswitches = [d for d in unique_devices
 
 ```
 Pattern: "F"
-Examples: FP221E5519055049, FP231GTF25002845, FP433FTF23013157
+Examples: FP221E1234567890, FP231GTF12345678, FP433FTF12345678
 All models: FortiAP 221E, 223E, 231F, 231G, 233G, 234G, 431F, 432G, 433F, etc.
 ```
 
@@ -305,7 +305,7 @@ All models: FortiAP 221E, 223E, 231F, 231G, 233G, 234G, 431F, 432G, 433F, etc.
 
 ```
 Pattern: "F"
-Examples: FGT60FTK12345678, FG100FTK19012345, FW40F3G19000123
+Examples: FGT60FTK12345678, FG100FTK12345678, FW40F3G12345678
 All models: FortiGate 30E through 600E, FortiGate VM, FortiWiFi 40F, etc.
 ```
 
