@@ -222,64 +222,191 @@ class FortiSwitchExporter:
         print(f"\n[*] Summary: {total_switches} FortiSwitch device(s) from {fortigates_with_switches} FortiGate(s)")
         return all_switches
 
+    def _extract_model_from_firmware(self, firmware: str) -> str:
+        """
+        Extract model from firmware string.
+        Example: "S224EN-v7.4.5-build880" -> "FortiSwitch-224EN"
+        """
+        if not firmware:
+            return ''
+        
+        # Try to extract model prefix (e.g., S224EN, FS1E48, SM24GF)
+        import re
+        match = re.match(r'^([A-Z0-9]+)-', firmware)
+        if match:
+            model_code = match.group(1)
+            return f"FortiSwitch-{model_code}"
+        
+        return ''
+
     def _extract_switch_info(self, switch: Dict, parent_name: str, parent_fgt: Dict, response: Dict) -> Dict:
-        """Extract and format FortiSwitch information."""
+        """Extract and format FortiSwitch information using unified 60-field structure."""
         # Get connection status
         state = switch.get('state', 'unknown')
         connection_status = 'Connected' if state == 'Authorized' else state
 
-        # Get firmware version - now from os_version in monitor endpoint
-        firmware = switch.get('os_version', 'Unknown')
+        # Get firmware version
+        firmware = switch.get('os_version', '')
+        
+        # Extract model from firmware string
+        model = self._extract_model_from_firmware(firmware)
+        if not model:
+            model = switch.get('platform', '')
 
-        # Get switch serial - can be in different fields
+        # Get switch serial
         serial_number = switch.get('switch_id', switch.get('switch-id', switch.get('serial', '')))
         
+        # Get device name
+        device_name = switch.get('name', '')
+        
+        # Description
+        description = switch.get('description', '')
+        if not description and model:
+            description = f"{model} Switch"
+        
+        # ADOM and company
+        adom = parent_fgt.get('adom', '')
+        
+        # Last updated
+        last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # PoE budget
+        max_poe_budget = str(switch.get('max_poe_budget', '')) if switch.get('max_poe_budget') else ''
+        
+        # Return unified 60-field structure
         return {
-            'serial_number': serial_number,
-            'device_name': switch.get('name', ''),
-            'description': switch.get('description', ''),
-            'device_type': 'physical',
-            'parent_fortigate': parent_name,
-            'parent_fortigate_serial': parent_fgt.get('serial', ''),
-            'parent_fortigate_platform': parent_fgt.get('platform', ''),
-            'adom': parent_fgt.get('adom', 'Unknown'),
-            'vdom': response.get('vdom', 'root'),
-            'connection_status': connection_status,
-            'firmware_version': firmware,
-            'switch_profile': switch.get('switch_profile', ''),
-            'poe_detection': switch.get('poe_lldp_detection', ''),
-            'max_poe_budget': switch.get('max_poe_budget', ''),
-            'model': switch.get('platform', ''),
-            'join_time': switch.get('join_time', ''),
-            'parent_ip': parent_fgt.get('ip', ''),
-            'query_timestamp': datetime.now().isoformat()
+            # Section 1: Core Identification
+            'Serial Number': serial_number,
+            'Device Name': device_name,
+            'Hostname': device_name or serial_number,
+            'Model': model,
+            'Description': description,
+            'Asset Type': 'Switch',
+            'Source System': 'FortiManager',
+            
+            # Section 2: Network & Connection
+            'Management IP': parent_fgt.get('ip', ''),
+            'Connection Status': connection_status,
+            'Management Mode': '',
+            'Firmware Version': firmware,
+            
+            # Section 3: Organization & Location
+            'Company': adom,
+            'Organizational Unit': adom,
+            'Branch': '',
+            'Location': '',
+            'Folder Path': '',
+            'Folder ID': '',
+            'Vendor': 'Fortinet',
+            
+            # Section 4: Contract Information (all empty for FortiManager)
+            'Contract Number': '',
+            'Contract SKU': '',
+            'Contract Type': '',
+            'Contract Summary': '',
+            'Contract Start Date': '',
+            'Contract Expiration Date': '',
+            'Contract Status': '',
+            'Contract Support Type': '',
+            'Contract Archived': '',
+            
+            # Section 5: Entitlement Information (all empty for FortiManager)
+            'Entitlement Level': '',
+            'Entitlement Type': '',
+            'Entitlement Start Date': '',
+            'Entitlement End Date': '',
+            
+            # Section 6: Lifecycle & Status
+            'Status': connection_status,
+            'Is Decommissioned': 'No',
+            'Archived': 'No',
+            'Registration Date': '',
+            'Product EoR': '',
+            'Product EoS': '',
+            'Last Updated': last_updated,
+            
+            # Section 7: Account Information (all empty for FortiManager)
+            'Account ID': '',
+            'Account Email': '',
+            'Account OU ID': '',
+            
+            # Section 8: FortiGate-Specific Fields (empty for FortiSwitch)
+            'HA Mode': '',
+            'HA Cluster Name': '',
+            'HA Role': '',
+            'HA Member Status': '',
+            'HA Priority': '',
+            'Max VDOMs': '',
+            
+            # Section 9: FortiSwitch/FortiAP Parent Tracking
+            'Parent FortiGate': parent_name,
+            'Parent FortiGate Serial': parent_fgt.get('serial', ''),
+            'Parent FortiGate Platform': parent_fgt.get('platform', ''),
+            'Parent FortiGate IP': parent_fgt.get('ip', ''),
+            
+            # Section 10: FortiSwitch-Specific Fields
+            'Device Type': 'physical',
+            'Max PoE Budget': max_poe_budget,
+            'Join Time': switch.get('join_time', ''),
+            
+            # Section 11: FortiAP-Specific Fields (empty for FortiSwitch)
+            'Board MAC': '',
+            'Admin Status': '',
+            'Client Count': '',
+            'Mesh Uplink': '',
+            'WTP Mode': '',
+            'VDOM': response.get('vdom', 'root')
         }
 
     def export_to_csv(self, switches: List[Dict], filename: str):
-        """Export FortiSwitch devices to CSV file."""
+        """Export FortiSwitch devices to CSV file using unified 60-field structure."""
         if not switches:
             print(f"[!]  No FortiSwitch devices to export")
             return
 
+        # Unified 60-field structure - same order for all systems
         fieldnames = [
-            'serial_number',
-            'device_name',
-            'description',
-            'device_type',
-            'parent_fortigate',
-            'parent_fortigate_serial',
-            'parent_fortigate_platform',
-            'adom',
-            'vdom',
-            'connection_status',
-            'firmware_version',
-            'model',
-            'switch_profile',
-            'poe_detection',
-            'max_poe_budget',
-            'join_time',
-            'parent_ip',
-            'query_timestamp'
+            # Section 1: Core Identification
+            'Serial Number', 'Device Name', 'Hostname', 'Model', 'Description', 
+            'Asset Type', 'Source System',
+            
+            # Section 2: Network & Connection
+            'Management IP', 'Connection Status', 'Management Mode', 'Firmware Version',
+            
+            # Section 3: Organization & Location
+            'Company', 'Organizational Unit', 'Branch', 'Location', 
+            'Folder Path', 'Folder ID', 'Vendor',
+            
+            # Section 4: Contract Information
+            'Contract Number', 'Contract SKU', 'Contract Type', 'Contract Summary',
+            'Contract Start Date', 'Contract Expiration Date', 'Contract Status',
+            'Contract Support Type', 'Contract Archived',
+            
+            # Section 5: Entitlement Information
+            'Entitlement Level', 'Entitlement Type', 
+            'Entitlement Start Date', 'Entitlement End Date',
+            
+            # Section 6: Lifecycle & Status
+            'Status', 'Is Decommissioned', 'Archived', 'Registration Date',
+            'Product EoR', 'Product EoS', 'Last Updated',
+            
+            # Section 7: Account Information
+            'Account ID', 'Account Email', 'Account OU ID',
+            
+            # Section 8: FortiGate-Specific Fields
+            'HA Mode', 'HA Cluster Name', 'HA Role', 'HA Member Status', 
+            'HA Priority', 'Max VDOMs',
+            
+            # Section 9: FortiSwitch/FortiAP Parent Tracking
+            'Parent FortiGate', 'Parent FortiGate Serial', 
+            'Parent FortiGate Platform', 'Parent FortiGate IP',
+            
+            # Section 10: FortiSwitch-Specific Fields
+            'Device Type', 'Max PoE Budget', 'Join Time',
+            
+            # Section 11: FortiAP-Specific Fields
+            'Board MAC', 'Admin Status', 'Client Count', 'Mesh Uplink', 
+            'WTP Mode', 'VDOM'
         ]
 
         try:
@@ -357,7 +484,8 @@ def main():
     # Configuration
     host = config['url']
     api_key = config['apikey']
-    verify_ssl = os.getenv('FORTIMANAGER_VERIFY_SSL', 'true').lower() == 'true'
+    verify_ssl_str = config.get('verify_ssl', os.getenv('FORTIMANAGER_VERIFY_SSL', 'true'))
+    verify_ssl = verify_ssl_str.lower() == 'true'
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
 
     print(f"[*] FortiManager: {host}")

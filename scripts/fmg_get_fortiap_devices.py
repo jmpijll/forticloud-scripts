@@ -228,51 +228,109 @@ class FortiAPExporter:
         print(f"[*] Total clients: {total_clients}")
         return all_aps
 
+    def _extract_model_from_firmware(self, firmware: str) -> str:
+        """Extract model from firmware string. Example: "FP231F-v7.2-build0318" -> "FortiAP-231F" """
+        if not firmware:
+            return ''
+        import re
+        match = re.match(r'^([A-Z0-9]+)-', firmware)
+        if match:
+            model_code = match.group(1)
+            return f"FortiAP-{model_code}"
+        return ''
+
     def _extract_ap_info(self, ap: Dict, parent_name: str, parent_fgt: Dict, response: Dict) -> Dict:
-        """Extract and format FortiAP information."""
-        # Get radio information if available
-        radio_1 = ap.get('radio_1', {})
-        radio_2 = ap.get('radio_2', {})
-
-        # Format radio details
-        radio_1_info = ''
-        if radio_1:
-            radio_1_info = f"{radio_1.get('operating_standard', 'N/A')} Ch{radio_1.get('channel', 'N/A')} {radio_1.get('operating_channel_bandwidth', '')}"
+        """Extract and format FortiAP information using unified 60-field structure."""
+        # Get firmware version
+        firmware = ap.get('os_version', ap.get('firmware', ''))
         
-        radio_2_info = ''
-        if radio_2:
-            radio_2_info = f"{radio_2.get('operating_standard', 'N/A')} Ch{radio_2.get('channel', 'N/A')} {radio_2.get('operating_channel_bandwidth', '')}"
-
-        # Get firmware version - use os_version which has the actual firmware
-        firmware = ap.get('os_version', ap.get('firmware', 'Unknown'))
-
+        # Extract model
+        model = self._extract_model_from_firmware(firmware)
+        
+        # Get serial and name
+        serial_number = ap.get('wtp_id', '')
+        device_name = ap.get('wtp_name', '')
+        
+        # Description
+        description = f"{model} Access Point" if model else ''
+        
+        # Location
+        location = ap.get('location', '') or ap.get('region', '')
+        
+        # ADOM
+        adom = parent_fgt.get('adom', '')
+        
+        # Connection status
+        connection_state = ap.get('connection_state', 'Unknown')
+        
+        # Client count
+        client_count = str(ap.get('client_count', '')) if ap.get('client_count', '') != '' else ''
+        
+        # Last updated
+        last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Return unified 60-field structure
         return {
-            'serial_number': ap.get('wtp_id', ''),
-            'device_name': ap.get('wtp_name', ''),
-            'board_mac': ap.get('board_mac', ''),
-            'ip_address': ap.get('ip_address', ''),
-            'parent_fortigate': parent_name,
-            'parent_fortigate_serial': parent_fgt.get('serial', ''),
-            'parent_fortigate_platform': parent_fgt.get('platform', ''),
-            'adom': parent_fgt.get('adom', 'Unknown'),
-            'vdom': response.get('vdom', 'root'),
-            'connection_state': ap.get('connection_state', 'Unknown'),
-            'admin_status': ap.get('admin_status', 'Unknown'),
-            'location': ap.get('location', ''),
-            'firmware': firmware,
-            'wtp_profile': ap.get('wtp_profile', ''),
-            'wtp_mode': ap.get('wtp_mode', ''),
-            'region': ap.get('region', ''),
-            'led_state': ap.get('led_state', ''),
-            'max_clients': ap.get('max_clients', ''),
-            'client_count': ap.get('client_count', 0),
-            'mesh_uplink': ap.get('mesh_uplink', ''),
-            'radio_1_config': radio_1_info,
-            'radio_1_tx_power': radio_1.get('oper_tx_power', ''),
-            'radio_2_config': radio_2_info,
-            'radio_2_tx_power': radio_2.get('oper_tx_power', ''),
-            'parent_ip': parent_fgt.get('ip', ''),
-            'query_timestamp': datetime.now().isoformat()
+            'Serial Number': serial_number,
+            'Device Name': device_name,
+            'Hostname': '',
+            'Model': model,
+            'Description': description,
+            'Asset Type': 'Access Point',
+            'Source System': 'FortiManager',
+            'Management IP': parent_fgt.get('ip', ''),
+            'Connection Status': connection_state,
+            'Management Mode': '',
+            'Firmware Version': firmware,
+            'Company': adom,
+            'Organizational Unit': adom,
+            'Branch': '',
+            'Location': location,
+            'Folder Path': '',
+            'Folder ID': '',
+            'Vendor': 'Fortinet',
+            'Contract Number': '',
+            'Contract SKU': '',
+            'Contract Type': '',
+            'Contract Summary': '',
+            'Contract Start Date': '',
+            'Contract Expiration Date': '',
+            'Contract Status': '',
+            'Contract Support Type': '',
+            'Contract Archived': '',
+            'Entitlement Level': '',
+            'Entitlement Type': '',
+            'Entitlement Start Date': '',
+            'Entitlement End Date': '',
+            'Status': connection_state,
+            'Is Decommissioned': 'No',
+            'Archived': 'No',
+            'Registration Date': '',
+            'Product EoR': '',
+            'Product EoS': '',
+            'Last Updated': last_updated,
+            'Account ID': '',
+            'Account Email': '',
+            'Account OU ID': '',
+            'HA Mode': '',
+            'HA Cluster Name': '',
+            'HA Role': '',
+            'HA Member Status': '',
+            'HA Priority': '',
+            'Max VDOMs': '',
+            'Parent FortiGate': parent_name,
+            'Parent FortiGate Serial': parent_fgt.get('serial', ''),
+            'Parent FortiGate Platform': parent_fgt.get('platform', ''),
+            'Parent FortiGate IP': parent_fgt.get('ip', ''),
+            'Device Type': '',
+            'Max PoE Budget': '',
+            'Join Time': '',
+            'Board MAC': ap.get('board_mac', ''),
+            'Admin Status': ap.get('admin_status', ''),
+            'Client Count': client_count,
+            'Mesh Uplink': ap.get('mesh_uplink', ''),
+            'WTP Mode': ap.get('wtp_mode', ''),
+            'VDOM': response.get('vdom', 'root')
         }
 
     def export_to_csv(self, aps: List[Dict], filename: str):
@@ -281,33 +339,28 @@ class FortiAPExporter:
             print(f"[!]  No FortiAP devices to export")
             return
 
+        # Unified 60-field structure - same order for all systems
         fieldnames = [
-            'serial_number',
-            'device_name',
-            'board_mac',
-            'ip_address',
-            'parent_fortigate',
-            'parent_fortigate_serial',
-            'parent_fortigate_platform',
-            'adom',
-            'vdom',
-            'connection_state',
-            'admin_status',
-            'location',
-            'firmware',
-            'wtp_profile',
-            'wtp_mode',
-            'region',
-            'led_state',
-            'max_clients',
-            'client_count',
-            'mesh_uplink',
-            'radio_1_config',
-            'radio_1_tx_power',
-            'radio_2_config',
-            'radio_2_tx_power',
-            'parent_ip',
-            'query_timestamp'
+            'Serial Number', 'Device Name', 'Hostname', 'Model', 'Description', 
+            'Asset Type', 'Source System',
+            'Management IP', 'Connection Status', 'Management Mode', 'Firmware Version',
+            'Company', 'Organizational Unit', 'Branch', 'Location', 
+            'Folder Path', 'Folder ID', 'Vendor',
+            'Contract Number', 'Contract SKU', 'Contract Type', 'Contract Summary',
+            'Contract Start Date', 'Contract Expiration Date', 'Contract Status',
+            'Contract Support Type', 'Contract Archived',
+            'Entitlement Level', 'Entitlement Type', 
+            'Entitlement Start Date', 'Entitlement End Date',
+            'Status', 'Is Decommissioned', 'Archived', 'Registration Date',
+            'Product EoR', 'Product EoS', 'Last Updated',
+            'Account ID', 'Account Email', 'Account OU ID',
+            'HA Mode', 'HA Cluster Name', 'HA Role', 'HA Member Status', 
+            'HA Priority', 'Max VDOMs',
+            'Parent FortiGate', 'Parent FortiGate Serial', 
+            'Parent FortiGate Platform', 'Parent FortiGate IP',
+            'Device Type', 'Max PoE Budget', 'Join Time',
+            'Board MAC', 'Admin Status', 'Client Count', 'Mesh Uplink', 
+            'WTP Mode', 'VDOM'
         ]
 
         try:
@@ -385,7 +438,8 @@ def main():
     # Configuration
     host = config['url']
     api_key = config['apikey']
-    verify_ssl = os.getenv('FORTIMANAGER_VERIFY_SSL', 'true').lower() == 'true'
+    verify_ssl_str = config.get('verify_ssl', os.getenv('FORTIMANAGER_VERIFY_SSL', 'true'))
+    verify_ssl = verify_ssl_str.lower() == 'true'
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
 
     print(f"[*] FortiManager: {host}")

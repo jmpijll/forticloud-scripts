@@ -37,6 +37,11 @@ class FortiManagerAPI:
         self.debug = debug
         self.base_url = f'{self.host}/jsonrpc'
         
+        # Disable SSL warnings if verify_ssl is False
+        if not verify_ssl:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -234,7 +239,7 @@ def flatten_device_data(devices: List[Dict]) -> List[Dict]:
 
 def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name: str) -> Dict:
     """
-    Create a CSV row for a device or HA member.
+    Create a CSV row for a device or HA member using unified 60-field structure.
     
     Args:
         device: Original device dictionary from API
@@ -242,12 +247,12 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
         ha_cluster_name: Name of HA cluster
     
     Returns:
-        Dictionary for CSV export
+        Dictionary for CSV export with all 60 unified fields
     """
     # If this is an HA member, use member-specific info
     if ha_member:
-        serial_number = ha_member.get('sn', 'N/A')
-        name = ha_member.get('name', 'N/A')
+        serial_number = ha_member.get('sn', '')
+        name = ha_member.get('name', '')
         
         # Determine HA role
         role = ha_member.get('role', -1)
@@ -255,7 +260,7 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
             0: 'Secondary',
             1: 'Primary',
             2: 'Standalone'
-        }.get(role, f'Unknown ({role})')
+        }.get(role, '')
         
         # Member status
         status = ha_member.get('status', 0)
@@ -263,27 +268,29 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
             0: 'Offline',
             1: 'Online',
             2: 'Unknown'
-        }.get(status, f'Unknown ({status})')
+        }.get(status, '')
         
         # Priority
-        priority = ha_member.get('prio', 0)
+        priority = str(ha_member.get('prio', '')) if ha_member.get('prio') else ''
         
     else:
-        serial_number = device.get('sn', 'N/A')
-        name = device.get('name', 'N/A')
-        role_str = 'N/A'
-        member_status = 'N/A'
-        priority = 0
+        serial_number = device.get('sn', '')
+        name = device.get('name', '')
+        role_str = ''
+        member_status = ''
+        priority = ''
     
     # Common device info (from parent device record)
-    hostname = device.get('hostname', name)
-    platform = device.get('platform_str', 'N/A')
+    hostname = device.get('hostname', name) if device.get('hostname') else name
+    platform = device.get('platform_str', '')
     description = device.get('desc', '')
-    ip_address = device.get('ip', 'N/A')
+    if not description and platform:
+        description = f"{platform} Firewall"
+    ip_address = device.get('ip', '')
     
     # Get ADOM from extra info
     extra_info = device.get('extra info', {})
-    adom = extra_info.get('adom', 'N/A') if extra_info else 'N/A'
+    adom = extra_info.get('adom', '') if extra_info else ''
     
     # Connection status (from parent device)
     conn_status = device.get('conn_status', 0)
@@ -291,7 +298,7 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
         0: 'Unknown',
         1: 'Connected',
         2: 'Disconnected'
-    }.get(conn_status, f'Unknown ({conn_status})')
+    }.get(conn_status, 'Unknown')
     
     # Management mode
     mgmt_mode = device.get('mgmt_mode', 0)
@@ -300,14 +307,14 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
         1: 'FMGFAZ',
         2: 'FMGFAI',
         3: 'Normal'
-    }.get(mgmt_mode, f'Unknown ({mgmt_mode})')
+    }.get(mgmt_mode, '')
     
-    # OS Version
+    # OS Version (Firmware Version in unified structure)
     os_ver = device.get('os_ver', 0)
     mr = device.get('mr', 0)
     build = device.get('build', 0)
     patch = device.get('patch', 0)
-    version_str = f"{os_ver}.{mr}.{patch}-build{build}" if os_ver else 'N/A'
+    firmware_version = f"{os_ver}.{mr}.{patch}-build{build}" if os_ver else ''
     
     # HA Configuration
     ha_mode = device.get('ha_mode', 0)
@@ -316,55 +323,158 @@ def _create_device_row(device: Dict, ha_member: Optional[Dict], ha_cluster_name:
         1: 'Active-Active',
         2: 'Active-Passive',
         3: 'Cluster'
-    }.get(ha_mode, f'Unknown ({ha_mode})')
+    }.get(ha_mode, 'Standalone')
     
-    # Last communication
+    # Last communication - format as YYYY-MM-DD HH:MM:SS
     last_checked = device.get('last_checked', 0)
-    last_checked_str = datetime.fromtimestamp(last_checked).strftime('%Y-%m-%d %H:%M:%S') if last_checked else 'Never'
+    last_updated = datetime.fromtimestamp(last_checked).strftime('%Y-%m-%d %H:%M:%S') if last_checked else ''
     
     # VDOM count
-    maxvdom = device.get('maxvdom', 1)
+    maxvdom = str(device.get('maxvdom', '')) if device.get('maxvdom') else ''
     
     # Meta fields (custom metadata)
     meta_fields = device.get('meta fields', {})
     company = meta_fields.get('Company/Organization', '') if meta_fields else ''
+    if not company:
+        company = adom  # Use ADOM as company if not specified
     
+    # Return unified 60-field structure
     return {
+        # Section 1: Core Identification
         'Serial Number': serial_number,
         'Device Name': name,
         'Hostname': hostname,
-        'Product Model': platform,
+        'Model': platform,
         'Description': description,
-        'ADOM': adom,
-        'Company': company,
+        'Asset Type': 'Firewall',
+        'Source System': 'FortiManager',
+        
+        # Section 2: Network & Connection
         'Management IP': ip_address,
         'Connection Status': conn_status_str,
         'Management Mode': mgmt_mode_str,
-        'OS Version': version_str,
+        'Firmware Version': firmware_version,
+        
+        # Section 3: Organization & Location
+        'Company': company,
+        'Organizational Unit': adom,
+        'Branch': '',
+        'Location': '',
+        'Folder Path': '',
+        'Folder ID': '',
+        'Vendor': 'Fortinet',
+        
+        # Section 4: Contract Information (all empty for FortiManager)
+        'Contract Number': '',
+        'Contract SKU': '',
+        'Contract Type': '',
+        'Contract Summary': '',
+        'Contract Start Date': '',
+        'Contract Expiration Date': '',
+        'Contract Status': '',
+        'Contract Support Type': '',
+        'Contract Archived': '',
+        
+        # Section 5: Entitlement Information (all empty for FortiManager)
+        'Entitlement Level': '',
+        'Entitlement Type': '',
+        'Entitlement Start Date': '',
+        'Entitlement End Date': '',
+        
+        # Section 6: Lifecycle & Status
+        'Status': conn_status_str,
+        'Is Decommissioned': 'No',
+        'Archived': 'No',
+        'Registration Date': '',
+        'Product EoR': '',
+        'Product EoS': '',
+        'Last Updated': last_updated,
+        
+        # Section 7: Account Information (all empty for FortiManager)
+        'Account ID': '',
+        'Account Email': '',
+        'Account OU ID': '',
+        
+        # Section 8: FortiGate-Specific Fields
         'HA Mode': ha_mode_str,
-        'HA Cluster Name': ha_cluster_name if ha_cluster_name else 'N/A',
+        'HA Cluster Name': ha_cluster_name,
         'HA Role': role_str,
-        'HA Member Status': member_status if ha_member else 'N/A',
-        'HA Priority': priority if ha_member else 'N/A',
+        'HA Member Status': member_status,
+        'HA Priority': priority,
         'Max VDOMs': maxvdom,
-        'Last Checked': last_checked_str
+        
+        # Section 9: FortiSwitch/FortiAP Parent Tracking (empty for FortiGate)
+        'Parent FortiGate': '',
+        'Parent FortiGate Serial': '',
+        'Parent FortiGate Platform': '',
+        'Parent FortiGate IP': '',
+        
+        # Section 10: FortiSwitch-Specific Fields (empty for FortiGate)
+        'Device Type': '',
+        'Max PoE Budget': '',
+        'Join Time': '',
+        
+        # Section 11: FortiAP-Specific Fields (empty for FortiGate)
+        'Board MAC': '',
+        'Admin Status': '',
+        'Client Count': '',
+        'Mesh Uplink': '',
+        'WTP Mode': '',
+        'VDOM': ''
     }
 
 
 def export_to_csv(data: List[Dict], filename: str) -> bool:
-    """Export data to CSV file."""
+    """Export data to CSV file using unified 60-field structure."""
     if not data:
         print("WARNING: No data to export")
         return False
     
     try:
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            # Unified 60-field structure - same order for all systems
             fieldnames = [
-                'Serial Number', 'Device Name', 'Hostname', 'Product Model',
-                'Description', 'ADOM', 'Company', 'Management IP',
-                'Connection Status', 'Management Mode', 'OS Version',
-                'HA Mode', 'HA Cluster Name', 'HA Role', 'HA Member Status', 'HA Priority',
-                'Max VDOMs', 'Last Checked'
+                # Section 1: Core Identification
+                'Serial Number', 'Device Name', 'Hostname', 'Model', 'Description', 
+                'Asset Type', 'Source System',
+                
+                # Section 2: Network & Connection
+                'Management IP', 'Connection Status', 'Management Mode', 'Firmware Version',
+                
+                # Section 3: Organization & Location
+                'Company', 'Organizational Unit', 'Branch', 'Location', 
+                'Folder Path', 'Folder ID', 'Vendor',
+                
+                # Section 4: Contract Information
+                'Contract Number', 'Contract SKU', 'Contract Type', 'Contract Summary',
+                'Contract Start Date', 'Contract Expiration Date', 'Contract Status',
+                'Contract Support Type', 'Contract Archived',
+                
+                # Section 5: Entitlement Information
+                'Entitlement Level', 'Entitlement Type', 
+                'Entitlement Start Date', 'Entitlement End Date',
+                
+                # Section 6: Lifecycle & Status
+                'Status', 'Is Decommissioned', 'Archived', 'Registration Date',
+                'Product EoR', 'Product EoS', 'Last Updated',
+                
+                # Section 7: Account Information
+                'Account ID', 'Account Email', 'Account OU ID',
+                
+                # Section 8: FortiGate-Specific Fields
+                'HA Mode', 'HA Cluster Name', 'HA Role', 'HA Member Status', 
+                'HA Priority', 'Max VDOMs',
+                
+                # Section 9: FortiSwitch/FortiAP Parent Tracking
+                'Parent FortiGate', 'Parent FortiGate Serial', 
+                'Parent FortiGate Platform', 'Parent FortiGate IP',
+                
+                # Section 10: FortiSwitch-Specific Fields
+                'Device Type', 'Max PoE Budget', 'Join Time',
+                
+                # Section 11: FortiAP-Specific Fields
+                'Board MAC', 'Admin Status', 'Client Count', 'Mesh Uplink', 
+                'WTP Mode', 'VDOM'
             ]
             
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -421,7 +531,8 @@ def main():
     # Get configuration from file or environment
     host = file_config.get('url') or os.getenv('FORTIMANAGER_HOST')
     api_key = file_config.get('apikey') or os.getenv('FORTIMANAGER_API_KEY')
-    verify_ssl = os.getenv('FORTIMANAGER_VERIFY_SSL', 'true').lower() == 'true'
+    verify_ssl_str = file_config.get('verify_ssl') or os.getenv('FORTIMANAGER_VERIFY_SSL', 'true')
+    verify_ssl = verify_ssl_str.lower() == 'true'
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
     
     # Validate configuration

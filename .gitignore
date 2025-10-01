@@ -52,14 +52,20 @@ Thumbs.db
 API_Credential*.txt
 *.env*
 !env.template
+topdeskapikey
 
 # Reference data (not for production)
 apireference/
 forticloudexport/
 fortimanagerapireference/
+topdeskapireference/
 fortimanagerapikey
 COMPLETION_SUMMARY.md
 SECURITY_AUDIT.md
+
+# Analysis reports (may contain sensitive data)
+*_analysis_*.txt
+*_report.txt
 
 # Temporary summary/checklist files (not for production)
 *_CHECKLIST.md
